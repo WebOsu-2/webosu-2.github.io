@@ -25,8 +25,6 @@ function setOptionPanel() {
     snakein: true,
     snakeout: true,
     autofullscreen: false,
-    sysdpi: true,
-    dpiscale: 1.0,
 
     disableWheel: false,
     disableButton: false,
@@ -34,12 +32,10 @@ function setOptionPanel() {
     K2name: "X",
     Kpausename: "SPACE",
     Kpause2name: "ESC",
-    Kskipname: "CTRL",
     K1keycode: 90,
     K2keycode: 88,
     Kpausekeycode: 32,
     Kpause2keycode: 27,
-    Kskipkeycode: 17,
 
     mastervolume: 60,
     effectvolume: 100,
@@ -52,8 +48,6 @@ function setOptionPanel() {
     hardrock: false,
     nightcore: false,
     hidden: false,
-    relax: false,
-    autopilot: false,
     autoplay: false,
 
     hideNumbers: false,
@@ -74,8 +68,6 @@ function setOptionPanel() {
       window.game.snakein = this.snakein;
       window.game.snakeout = this.snakeout;
       window.game.autofullscreen = this.autofullscreen;
-      window.game.overridedpi = !this.sysdpi;
-      window.game.dpiscale = this.dpiscale;
 
       window.game.allowMouseScroll = !this.disableWheel;
       window.game.allowMouseButton = !this.disableButton;
@@ -83,7 +75,6 @@ function setOptionPanel() {
       window.game.K2keycode = this.K2keycode;
       window.game.ESCkeycode = this.Kpausekeycode;
       window.game.ESC2keycode = this.Kpause2keycode;
-      window.game.CTRLkeycode = this.Kskipkeycode;
 
       window.game.masterVolume = this.mastervolume / 100;
       window.game.effectVolume = this.effectvolume / 100;
@@ -96,8 +87,6 @@ function setOptionPanel() {
       window.game.hardrock = this.hardrock;
       window.game.nightcore = this.nightcore;
       window.game.hidden = this.hidden;
-      window.game.relax = this.relax;
-      window.game.autopilot = this.autopilot;
       window.game.autoplay = this.autoplay;
 
       window.game.hideNumbers = this.hideNumbers;
@@ -139,37 +128,37 @@ function setOptionPanel() {
     };
   }
 
-  function bindExclusiveCheck(idItemPairs) {
-    let cItemArr = [];
-    idItemPairs.forEach((pair) => {
-      let c = document.getElementById(pair[0]);
-      let item = pair[1];
-      c.checked = gamesettings[item];
-      checkdefault(c, item);
-      cItemArr.push([c, item]);
-    });
+  function bindExclusiveCheck(id1, item1, id2, item2) {
+    let c1 = document.getElementById(id1);
+    let c2 = document.getElementById(id2);
+    c1.checked = gamesettings[item1];
+    c2.checked = gamesettings[item2];
     gamesettings.restoreCallbacks.push(function () {
-      cItemArr.forEach((cItem) => {
-        cItem[0].checked = gamesettings[cItem[1]];
-        checkdefault(cItem[0], cItem[1]);
-      });
+      c1.checked = gamesettings[item1];
+      c2.checked = gamesettings[item2];
+      checkdefault(c1, item1);
+      checkdefault(c2, item2);
     });
-    cItemArr.forEach((cItem) => {
-      cItem[0].onclick = function () {
-        gamesettings[cItem[1]] = cItem[0].checked;
-        cItemArr.forEach((ci) => {
-          if (ci[0] !== cItem[0]) {
-            gamesettings[ci[1]] = false;
-            ci[0].checked = false;
-          }
-        });
-        gamesettings.loadToGame();
-        saveToLocal();
-        cItemArr.forEach((ci) => {
-          checkdefault(ci[0], ci[1]);
-        });
-      };
-    });
+    checkdefault(c1, item1);
+    checkdefault(c2, item2);
+    c1.onclick = function () {
+      gamesettings[item1] = c1.checked;
+      gamesettings[item2] = false;
+      c2.checked = false;
+      gamesettings.loadToGame();
+      saveToLocal();
+      checkdefault(c1, item1);
+      checkdefault(c2, item2);
+    };
+    c2.onclick = function () {
+      gamesettings[item2] = c2.checked;
+      gamesettings[item1] = false;
+      c1.checked = false;
+      gamesettings.loadToGame();
+      saveToLocal();
+      checkdefault(c1, item1);
+      checkdefault(c2, item2);
+    };
   }
 
   function bindrange(id, item, feedback) {
@@ -227,8 +216,6 @@ function setOptionPanel() {
           gamesettings[keynameitem] = "SPACE";
         if (gamesettings[keynameitem] == "ESCAPE")
           gamesettings[keynameitem] = "ESC";
-        if (gamesettings[keynameitem] == "CONTROL")
-          gamesettings[keynameitem] = "CTRL";
         btn.value = gamesettings[keynameitem];
         gamesettings.loadToGame();
         saveToLocal();
@@ -261,10 +248,6 @@ function setOptionPanel() {
   bindcheck("snakein-check", "snakein");
   bindcheck("snakeout-check", "snakeout");
   bindcheck("autofullscreen-check", "autofullscreen");
-  bindcheck("sysdpi-check", "sysdpi");
-  bindrange("dpi-range", "dpiscale", function (v) {
-    return v.toFixed(2) + "x";
-  });
 
   // input settings
   bindcheck("disable-wheel-check", "disableWheel");
@@ -273,7 +256,6 @@ function setOptionPanel() {
   bindkeyselector("rbutton1select", "K2name", "K2keycode");
   bindkeyselector("pausebutton2select", "Kpause2name", "Kpause2keycode");
   bindkeyselector("pausebuttonselect", "Kpausename", "Kpausekeycode");
-  bindkeyselector("skipbuttonselect", "Kskipname", "Kskipkeycode");
 
   // audio settings
   bindrange("mastervolume-range", "mastervolume", function (v) {
@@ -291,20 +273,15 @@ function setOptionPanel() {
   bindcheck("beatmap-hitsound-check", "beatmapHitsound");
 
   // mods
-  bindExclusiveCheck([
-    ["easy-check", "easy"],
-    ["hardrock-check", "hardrock"],
-  ]);
-  bindExclusiveCheck([
-    ["daycore-check", "daycore"],
-    ["nightcore-check", "nightcore"],
-  ]);
-  bindExclusiveCheck([
-    ["relax-check", "relax"],
-    ["autopilot-check", "autopilot"],
-    ["autoplay-check", "autoplay"],
-  ]);
+  bindExclusiveCheck("easy-check", "easy", "hardrock-check", "hardrock");
+  bindExclusiveCheck(
+    "daycore-check",
+    "daycore",
+    "nightcore-check",
+    "nightcore"
+  );
   bindcheck("hidden-check", "hidden");
+  bindcheck("autoplay-check", "autoplay");
 
   // skin
   bindcheck("hidenumbers-check", "hideNumbers");
