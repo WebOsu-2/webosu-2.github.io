@@ -1,8 +1,9 @@
-# osu! web
+# WebOsu 2.0!
 
-A browser rhythm game where you click circles on the screen, following rhythm of the music.
+Osu! is a rhythm game where you click circles on the screen, following the rhythm of the music.
 
-Powered by [PixiJS](https://www.pixijs.com), [Sayobot](https://osu.sayobot.cn).
+
+Powered by [PixiJS](https://www.pixijs.com), [Sayobot](https://osu.sayobot.cn). Massive credit to the giga-chad that made [the original WebOsu!](https://github.com/111116/webosu) as this is just a fork of that, with minor changes + continuation of updates.
 
 **(under development)**
 
@@ -33,7 +34,7 @@ nohup node api.js &
 - audio offset
 - input offset
 - beatmap hitsounds
-- supported mods: EZ DC HR NC HD AT
+- supported mods: Easy, Daycore, Hard Rock, Hidden, Nightcore, Relax, Autopilot, Autoplay.
 
 ## License Notes
 
