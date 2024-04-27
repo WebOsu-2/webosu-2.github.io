@@ -11,10 +11,6 @@ Note: This is an unofficial implementation of [osu!](https://osu.ppy.sh). Scorin
 
 ## Screenshots
 
-web page:
-
-![webpage](screenshots/page3.jpg)
-
 game in action:
 
 ![webpage](screenshots/clip3.gif)
