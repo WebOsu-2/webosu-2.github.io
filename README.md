@@ -34,7 +34,7 @@ nohup node api.js &
 - audio offset
 - input offset
 - beatmap hitsounds
-- supported mods: Easy, Daycore, Hard Rock, Hidden, Nightcore, Relax, Autopilot, Autoplay.
+- supported mods: Easy, Daycore, Hard Rock, Hidden, Nightcore, Autoplay.
 
 ## License Notes
 
