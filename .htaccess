@@ -1,0 +1,7 @@
+ RewriteEngine on
+ #redirect /file.html to /file
+ RewriteCond %{THE_REQUEST} \s/([^.]+)\.html [NC]
+ RewriteRule ^ /%1 [NE,L,R]
+ # now we will internally map /file to/ file.html
+ RewriteCond %{REQUEST_FILENAME}.html -f
+ RewriteRule ^(.*)/?$ /$1.html  [L]
