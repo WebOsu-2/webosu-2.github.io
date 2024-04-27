@@ -42,12 +42,12 @@
         <table class="holder" id="settings-panel">
           <tr>
             <td>
-              <h3>显示设置</h3>
+              <h3>Display Settings</h3>
             </td>
           </tr>
           <tr>
             <td>
-              <div class="option-name">背景变暗</div>
+              <div class="option-name">Background Dim</div>
               <div class="option-control">
                 <input
                   id="dim-range"
@@ -67,7 +67,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">背景模糊</div>
+              <div class="option-name">Background Blur</div>
               <div class="option-control">
                 <input
                   id="blur-range"
@@ -87,7 +87,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">光标大小</div>
+              <div class="option-name">Cursor Size</div>
               <div class="option-control">
                 <input
                   id="cursorsize-range"
@@ -107,8 +107,8 @@
             </td>
           </tr>
           <tr>
-            <td title="减少光标延迟，但兼容性差，可能闪烁或无法显示">
-              <div class="option-name">启用硬件光标</div>
+            <td title="Bypasses mouse acceleration, highly recommended. Turn off if you face issues.">
+              <div class="option-name">Raw cursor input</div>
               <div class="option-control">
                 <input id="showhwmouse-check" type="checkbox" /><span></span>
               </div>
@@ -116,7 +116,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">滑条渐入</div>
+              <div class="option-name">Slider snake in</div>
               <div class="option-control">
                 <input id="snakein-check" type="checkbox" /><span></span>
               </div>
@@ -124,7 +124,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">滑条渐出</div>
+              <div class="option-name">Slider snake out</div>
               <div class="option-control">
                 <input id="snakeout-check" type="checkbox" /><span></span>
               </div>
@@ -132,7 +132,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">进入游戏自动全屏</div>
+              <div class="option-name">Auto start game on fullscreen</div>
               <div class="option-control">
                 <input id="autofullscreen-check" type="checkbox" /><span></span>
               </div>
@@ -141,20 +141,20 @@
 
           <tr>
             <td>
-              <h3>操作设置</h3>
+              <h3>Input Settings</h3>
             </td>
           </tr>
           <tr>
-            <td title="以避免偶然改变音量">
-              <div class="option-name">游戏时禁用鼠标滚轮</div>
+            <td title="To avoid accidentally changing the volume">
+              <div class="option-name">Disable mouse wheel while playing</div>
               <div class="option-control">
                 <input id="disable-wheel-check" type="checkbox" /><span></span>
               </div>
             </td>
           </tr>
           <tr>
-            <td title="以避免偶然点击物体">
-              <div class="option-name">游戏时禁用鼠标按钮</div>
+            <td title="To avoid accidentally clicking objects">
+              <div class="option-name">Disable mouse click while playing</div>
               <div class="option-control">
                 <input id="disable-button-check" type="checkbox" /><span></span>
               </div>
@@ -162,40 +162,40 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">左键</div>
+              <div class="option-name">Left click</div>
               <div class="option-control">
-                <input id="lbutton1select" type="button" value="oops" />
-                <input type="button" value="M1" />
+                <input id="lbutton1select" type="button" value="Z" />
+                <input type="button" value="" />
               </div>
             </td>
           </tr>
           <tr>
             <td>
-              <div class="option-name">右键</div>
+              <div class="option-name">Right click</div>
               <div class="option-control">
-                <input id="rbutton1select" type="button" value="oops" />
-                <input type="button" value="M2" />
+                <input id="rbutton1select" type="button" value="X" />
+                <input type="button" value="" />
               </div>
             </td>
           </tr>
           <tr>
             <td>
-              <div class="option-name">暂停键</div>
+              <div class="option-name">Pause</div>
               <div class="option-control">
-                <input id="pausebuttonselect" type="button" value="oops" />
-                <input id="pausebutton2select" type="button" value="oops" />
+                <input id="pausebuttonselect" type="button" value="ESCAPE" />
+                <input id="pausebutton2select" type="button" value="" />
               </div>
             </td>
           </tr>
 
           <tr>
             <td>
-              <h3>音频设置</h3>
+              <h3>Audio Settings</h3>
             </td>
           </tr>
           <tr>
             <td>
-              <div class="option-name">主音量</div>
+              <div class="option-name">Master Volume</div>
               <div class="option-control">
                 <input
                   id="mastervolume-range"
@@ -215,7 +215,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">音效音量</div>
+              <div class="option-name">Sound Effect Volume</div>
               <div class="option-control">
                 <input
                   id="effectvolume-range"
@@ -235,7 +235,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">音乐音量</div>
+              <div class="option-name">Music Volume</div>
               <div class="option-control">
                 <input
                   id="musicvolume-range"
@@ -255,7 +255,7 @@
           </tr>
           <tr title="不建议使用！如果不确定有很大延迟，请勿使用！">
             <td>
-              <div class="option-name">音频偏移</div>
+              <div class="option-name">Audio Offset</div>
               <div class="option-control">
                 <input
                   id="audiooffset-range"
@@ -272,11 +272,11 @@
                 ></div>
               </div>
               <div style="font-size: 0.8em; color: #999; margin-top: 2.2em">
-                不建议使用！如使用请关闭打击音效，设为正值则使判定点相对于音乐延后。前往<a
+                Not recommended to use! If you do, please turn off the hitsounds. Go to <a
                   style="color: #8bc"
                   href="https://bemuse.ninja/?mode=sync"
                   >bemuse sync</a
-                >以判断键盘延迟。
+                > to determine the keyboard delay.
               </div>
             </td>
           </tr>
@@ -294,7 +294,7 @@
 
           <tr>
             <td>
-              <h3>MODS</h3>
+              <h3>Mods</h3>
             </td>
           </tr>
           <tr>
@@ -373,12 +373,12 @@
 
           <tr>
             <td>
-              <h3>皮肤设置</h3>
+              <h3>Skin Settings</h3>
             </td>
           </tr>
           <tr>
             <td>
-              <div class="option-name">隐藏物体序号</div>
+              <div class="option-name">Hide circle number</div>
               <div class="option-control">
                 <input id="hidenumbers-check" type="checkbox" /><span></span>
               </div>
@@ -386,7 +386,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">隐藏Great判定提示</div>
+              <div class="option-name">Hide "Great" (300s)</div>
               <div class="option-control">
                 <input id="hidegreat-check" type="checkbox" /><span></span>
               </div>
@@ -394,7 +394,7 @@
           </tr>
           <tr>
             <td>
-              <div class="option-name">隐藏连接线</div>
+              <div class="option-name">Hide connecting lines</div>
               <div class="option-control">
                 <input
                   id="hidefollowpoints-check"
@@ -410,7 +410,7 @@
                 id="restoredefault-btn"
                 type="button"
                 class="warnbtn"
-                value="全部恢复默认设置"
+                value="Restore to default settings"
               />
             </td>
           </tr>
