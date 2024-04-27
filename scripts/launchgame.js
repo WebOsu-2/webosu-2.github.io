@@ -41,7 +41,7 @@ function launchOSU(osu, beatmapid, version){
     }
 
     // load cursor
-    if (!game.showhwmouse || game.autoplay) {
+    if (!game.showhwmouse || game.autoplay || game.autopilot) {
         game.cursor = new PIXI.Sprite(Skin["cursor.png"]);
         game.cursor.anchor.x = game.cursor.anchor.y = 0.5;
         game.cursor.scale.x = game.cursor.scale.y = 0.3 * game.cursorSize;
@@ -55,7 +55,7 @@ function launchOSU(osu, beatmapid, version){
     var pMainPage = document.getElementById("main-page");
     var pNav = document.getElementById("main-nav");
     pGameArea.appendChild(app.view);
-    if (game.autoplay) {
+    if (game.autoplay || game.autopilot) {
         pGameArea.classList.remove("shownomouse");
         pGameArea.classList.remove("showhwmousemedium");
         pGameArea.classList.remove("showhwmousesmall");
