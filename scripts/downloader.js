@@ -45,7 +45,7 @@ function startdownload(box) {
 	if (box.downloading) {
 		return;
 	}
-	let url = "https://api.osu.direct/d/" + box.sid;
+	let url = "https://dl.sayobot.cn/beatmaps/download/novideo/" + box.sid;
 	box.downloading = true;
     box.classList.add("downloading");
     let xhr = new XMLHttpRequest();
