@@ -35,29 +35,14 @@
     </div>
 
     <nav id="main-nav">
-      <div class="nav-link">
-        <a href="index.html" class="brand">WebOsu 2.0!</a>
-        <a href="new.html" class="pseudo button">Latest</a>
-        <a href="hot.html" class="pseudo button">Popular</a>
-        <a href="genre.html" class="pseudo button">Genres</a>
-      </div>
-      <div class="nav-search">
-        <form action="search.html">
-          <input type="text" name="q" placeholder="Beatmap name or Set ID" />
-          <input type="image" class="search-button" src="research.svg" />
-        </form>
-      </div>
-      <div class="nav-tool">
-        <a href="local.html" class="pseudo button">Favourites</a>
-        <a href="faq.html" class="pseudo button">FAQ</a>
-        <a href="settings.html" class="pseudo button">Settings</a>
-        <a
-          onclick="document.documentElement.requestFullscreen();"
-          class="pseudo button"
-          >Go to full screen</a
-        >
-      </div>
     </nav>
+        <script>
+          fetch("navbar.html")
+              .then(response => response.text())
+              .then(content => {
+                  document.getElementById("main-nav").innerHTML = content;
+              });
+          </script>
 
     <div class="main-page" id="main-page">
       <div class="main-content">
@@ -118,18 +103,14 @@
             <!-- to be filled in script -->
           </div>
         </div>
-        <div class="text">Does not support mobile devices at this moment.</div>
-        <div class="text">
-          In development version 1.0.0<a
-            href="https://github.com/mostlime12195/webosu-2.0"
-            >Github</a
-          >
-        </div>
-        <div class="text">
-          Our temporary beatmap provider is
-          <a href="https://osu.sayobot.cn/">Sayobot</a>
-        </div>
-      </div>
+        <div id="footer"></div>
+        <script>
+          fetch("footer.html")
+              .then(response => response.text())
+              .then(content => {
+                  document.getElementById("footer").innerHTML = content;
+              });
+          </script>
 
       <div class="statuslines" id="statuslines">
         <div class="progress" id="script-progress">
