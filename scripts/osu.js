@@ -370,7 +370,7 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
                 reader.readAsArrayBuffer(blob);
             });
         }
-    };
+    }
 
     return Osu;
 
