@@ -82,7 +82,7 @@ function() {
             l += Math.hypot(dx, dy);
         }
         return {curve: curve, pointAt: pointAt, totalDistance: l};
-    };
+    }
     return CircumscribedCircle;
 
     function lerp(a, b, t) {

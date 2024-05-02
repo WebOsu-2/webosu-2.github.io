@@ -12,7 +12,7 @@
          * @param {number} volume Volume of preview audio
          */
         constructor(sid, volume = 1) {
-            const audioContext = new Audio("https://cdn.sayobot.cn:25225/preview/" + sid + ".mp3");
+            const audioContext = new Audio("https://catboy.best/preview/audio/" + sid + "?set=1");
             this._sid = sid;
             this._volume = volume;
             this._audioContext = audioContext;
@@ -139,7 +139,7 @@
         if (box.downloading) {
             return;
         }
-        let url = "https://txy1.sayobot.cn/beatmaps/download/mini/" + box.sid;
+        let url = "https://catboy.best/d/" + box.sid + "n";
         box.downloading = true;
         box.classList.add("downloading");
         let xhr = new XMLHttpRequest();
