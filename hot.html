@@ -56,11 +56,11 @@
         <div id="footer"></div>
         <script>
           fetch("footer.html")
-              .then(response => response.text())
-              .then(content => {
-                  document.getElementById("footer").innerHTML = content;
-              });
-          </script>
+            .then((response) => response.text())
+            .then((content) => {
+              document.getElementById("footer").innerHTML = content;
+            });
+        </script>
       </div>
       <!-- <div class="side-panel">
                 to be activated in script
@@ -81,13 +81,15 @@
       </div>
     </div>
     <script>
-      addBeatmapList("https://api.sayobot.cn/beatmaplist?0=20&1=0&2=1&5=1");
-      var cur = 20;
+      addBeatmapList(
+        "https://catboy.best/api/v2/search?mode=0&query=Top Rated"
+      );
+      var cur = 1;
       document.getElementById("btnmore").onclick = function () {
         addBeatmapList(
-          "https://api.sayobot.cn/beatmaplist?0=20&1=" + cur + "&2=1&5=1"
+          `https://catboy.best/api/v2/search?p=${cur}&mode=0&query=Top Rated`
         );
-        cur += 20;
+        cur++;
       };
     </script>
   </body>

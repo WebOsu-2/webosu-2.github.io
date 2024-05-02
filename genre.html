@@ -44,29 +44,27 @@
     <div class="main-page" id="main-page">
       <div class="main-content">
         <div class="sort-nav">
-          <div class="title">Style</div>
+          <div class="title">Genre</div>
           <div class="selitem" genre="1">All</div>
-          <div class="selitem" genre="4">Game</div>
-          <div class="selitem" genre="8">Cartoon</div>
+          <div class="selitem" genre="4">Games</div>
+          <div class="selitem" genre="8">Animation</div>
           <div class="selitem" genre="16">Rock</div>
           <div class="selitem" genre="32">Popular</div>
-          <div class="selitem" genre="128">New</div>
+          <div class="selitem" genre="128">Novelty</div>
           <div class="selitem" genre="1024">Electronic</div>
-          <div class="selitem" genre="2+64+256">Other</div>
+          <div class="selitem" genre="2+64+256">Others</div>
         </div>
         <div class="sort-nav">
           <div class="title">Language</div>
           <div class="selitem" lang="1">All</div>
-          <div class="selitem" lang="16">Chinese</div>
+          <div class="selitem" lang="32">Instrumental</div>
           <div class="selitem" lang="4">English</div>
           <div class="selitem" lang="8">Japanese</div>
-          <div class="selitem" lang="32">Instrumental</div>
           <div class="selitem" lang="64">Korean</div>
+          <div class="selitem" lang="16">Chinese</div>
           <div class="selitem" lang="128">French</div>
           <div class="selitem" lang="256">German</div>
-          <div class="selitem" lang="2048">Italian</div>
-          <div class="selitem" lang="512">Swedish</div>
-          <div class="selitem" lang="2+1024">Other</div>
+          <div class="selitem" lang="2+1024">Others</div>
         </div>
         <hr />
 
@@ -109,29 +107,27 @@
     </div>
     <script>
       let btns = document.getElementsByClassName("selitem");
+
       function search(genre, lang) {
         // clear list
         list = document.getElementById("beatmap-list");
+        document.getElementById("btnmore").innerText = "Load More";
         while (list.firstChild) {
           list.removeChild(list.firstChild);
         }
-        addBeatmapList(
-          "https://api.sayobot.cn/beatmaplist?0=20&1=0&2=4&5=1&7=" +
-            genre +
-            "&8=" +
-            lang
-        );
-        var cur = 20;
+        addBeatmapList("https://catboy.best/api/v2/search?mode=0");
+        var p = 0;
         document.getElementById("btnmore").onclick = function () {
-          addBeatmapList(
-            "https://api.sayobot.cn/beatmaplist?0=20&1=" +
-              cur +
-              "&2=4&5=1&7=" +
-              genre +
-              "&8=" +
-              lang
-          );
-          cur += 20;
+          if (typeof window.list_endid == "undefined") {
+            addBeatmapList("https://catboy.best/api/v2/search?mode=0&p=" + p);
+          } else {
+            if (window.list_endid == 0)
+              document.getElementById("btnmore").innerText =
+                "There's no more beatmaps to load!";
+            else
+              addBeatmapList("https://catboy.best/api/v2/search?mode=0&p=" + p);
+          }
+          p++;
         };
         // update buttons state
         for (let i = 0; i < btns.length; ++i) {
