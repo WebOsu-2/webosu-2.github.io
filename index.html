@@ -50,10 +50,10 @@
           Announcement: This site is still under development. If you encounter
           any issues, read <a href="faq.html">the FAQ</a>.
         </div>
-        <br />
-        <div class="index-area">
-          <h2>Live plays</h2>
-          <hr />
+        <br/>
+<!--        <div class="index-area"> commented out cuz the leaderboard doesn't work.
+          <h2>Live plays</h2> 
+          <hr/>
           <table>
             <thead>
               <tr>
@@ -67,10 +67,9 @@
               </tr>
             </thead>
             <tbody id="activity-list">
-              <!-- will be filled in script -->
             </tbody>
-          </table>
-        </div>
+           </table>
+        </div> --> 
         <div class="index-area">
           <h2>Recently Played</h2>
           <a href="history.html" class="more">View your play history</a>
@@ -79,6 +78,14 @@
             <!-- to be filled in script -->
           </div>
         </div>
+        <div class="index-area">
+          <a onclick="genRandomList()" class="more" style="cursor:pointer;">Get new random Beatmaps</a>
+          <h2>Random Beatmaps<h2>
+          <hr/>
+          <div class="beatmap-list" id="beatmap-list-random">
+          <!-- to be filled in script -->
+          </div>
+      </div>
         <div class="index-area">
           <h2>Latest Beatmaps</h2>
           <a href="new.html" class="more">View more latest beatmaps</a>
@@ -128,7 +135,7 @@
       </div>
     </div>
     <script>
-      // what's happening
+ /*     //creates leaderboard, commented out cuz it doesn't work.
       let tbody = document.getElementById("activity-list");
       function formattime(date) {
         let m;
@@ -190,65 +197,51 @@
         xhr.send();
       }
       refreshLivescore();
-      window.setInterval(refreshLivescore, 5000);
+      window.setInterval(refreshLivescore, 5000); */
       // recently played
-      if (window.localforage) {
-        let listhistory = document.getElementById("beatmap-list-history");
-        localforage.getItem("playhistory1000", function (err, item) {
-          if (err) {
-            listhistory.innerText = "Game record loading failed";
-            return;
-          }
-          if (item && item.length) {
-            item = item.reverse();
-            sid = [];
-            for (let i = 0; i < item.length; ++i) {
-              if (item[i].sid) sid.push(item[i].sid);
+      addBeatmapList("https://catboy.best/api/v2/search?amount=6&status=1&status=4&status=-2&mode=0",
+            document.getElementById("beatmap-list-new"),
+            function (t) {
+                return (t.modes & 1) != 0;
+            }, 6);
+        // Get random beatmaps
+        function genRandomList() {
+            // Wipe Random List
+            let list = document.getElementById("beatmap-list-random");
+            list.innerHTML = ''
+            // Re-fill Random List
+            let randquery = Math.random().toString(36).replace(/[^a-p]+/g, '').substr(1, 5);
+            addBeatmapList("https://catboy.best/api/v2/search?q=" + randquery + "&amount=6&status=1&status=4&status=-2&mode=0", list,
+                function (t) {
+                    while (list.firstChild) list.removeChild(list.firstChild);
+                    return (t.modes & 1) != 0;
+                }, 6);
+        }
+        genRandomList();
+        // Get hot beatmaps
+        addBeatmapList("https://catboy.best/api/v2/search?amount=6&status=1&status=4&status=-2&mode=0&query=Top Rated", document.getElementById(
+            "beatmap-list-hot"));
+        // Favorite beatmaps
+        if (window.localforage) {
+            window.localforage.getItem("likedsidset", function (err, val) {
+                if (err) {
+                    document.getElementById("beatmap-list-liked").innerText =
+                        "Failed to load favorites list.";
+                    return;
+                }
+                if (val && val.size) {
+                    let listlike = document.getElementById("beatmap-list-liked");
+                    list = Array.from(val);
+                    list.length = Math.min(list.length, 6)
+                    addBeatmapSids(list, listlike);
+                } else {
+                    document.getElementById("beatmap-list-liked").innerText =
+                        "You haven't favorited any Beatmaps yet! Click on the heart in the lower right corner of the Beatmap to save it.";
+                }
+            });
+        } else {
+            alert("Oh no, localforage isn't supported on this browser")
             }
-            sid = [...new Set(sid)]; // uniq
-            for (let i = 0; i < 4 && i < sid.length; ++i)
-              addBeatmapSid(sid[i], listhistory);
-          } else {
-            listhistory.innerText =
-              "You haven't played a song yet! Click on the track, select a difficulty and start playing after the loading is completed.";
-          }
-        });
-      }
-      // new
-      addBeatmapList(
-        "https://api.sayobot.cn/beatmaplist?0=20&1=0&2=2&5=1",
-        document.getElementById("beatmap-list-new"),
-        function (t) {
-          return (t.modes & 1) != 0;
-        },
-        4
-      );
-      // hot
-      addBeatmapList(
-        "https://api.sayobot.cn/beatmaplist?0=4&1=0&2=1&5=1",
-        document.getElementById("beatmap-list-hot")
-      );
-      // liked
-      if (window.localforage) {
-        window.localforage.getItem("likedsidset", function (err, val) {
-          if (err) {
-            document.getElementById("beatmap-list-liked").innerText =
-              "Failed to load favourites.";
-            return;
-          }
-          if (val && val.size) {
-            let listlike = document.getElementById("beatmap-list-liked");
-            list = Array.from(val);
-            for (let i = 0; i < list.length && i < 4; ++i)
-              addBeatmapSid(list[i], listlike);
-          } else {
-            document.getElementById("beatmap-list-liked").innerText =
-              "You haven't added a song yet! Click the heart in the lower right corner of the track to favorite a track.";
-          }
-        });
-      } else {
-        alert("localforage not supported");
-      }
     </script>
   </body>
 </html>
