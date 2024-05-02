@@ -33,6 +33,7 @@ nohup node api.js &
 
 - beatmap hitsounds
 - performance points (pp)
+- Live Plays fix
 
 ## License Notes
 
