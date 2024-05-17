@@ -48,12 +48,12 @@ function launchOSU(osu, beatmapid, version) {
   }
 
   // load cursor
-  if (!game.showhwmouse || game.autoplay || game.autopilot) {
+  if (!game.showhwmouse || game.autoplay) {
     game.cursor = new PIXI.Sprite(Skin["cursor.png"]);
     game.cursor.anchor.x = game.cursor.anchor.y = 0.5;
-    //game.cursor.scale.x = game.cursor.scale.y = 0.3 * game.cursorSize;
+    game.cursor.scale.x = game.cursor.scale.y = 0.3 * game.cursorSize;
     game.stage.addChild(game.cursor);
-  }
+}
 
   // switch page to game view
   if (game.autofullscreen) document.documentElement.requestFullscreen();
@@ -120,7 +120,6 @@ function launchOSU(osu, beatmapid, version) {
     if (game.scene) {
       //console.log(game.cursor);
       game.scene.render(timestamp);
-      //game.cursor.scale.x = game.cursor.scale.y = 0.3 ;
     }
     if (game.cursor) {
       // Handle cursor
