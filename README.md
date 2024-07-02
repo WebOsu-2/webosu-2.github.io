@@ -31,9 +31,10 @@ nohup node api.js &
 
 ## Todos
 
-- beatmap hitsounds
+- uploadable skins
 - performance points (pp)
 - Live Plays fix
+- Setting to choose between SayoBot or Mino API
 
 ## License Notes
 
