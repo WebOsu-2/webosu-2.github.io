@@ -107,27 +107,29 @@
     </div>
     <script>
       let btns = document.getElementsByClassName("selitem");
-
       function search(genre, lang) {
         // clear list
         list = document.getElementById("beatmap-list");
-        document.getElementById("btnmore").innerText = "Load More";
         while (list.firstChild) {
           list.removeChild(list.firstChild);
         }
-        addBeatmapList("https://catboy.best/api/v2/search?mode=0");
-        var p = 0;
+        addBeatmapList(
+          "https://api.sayobot.cn/beatmaplist?0=20&1=0&2=4&5=1&7=" +
+            genre +
+            "&8=" +
+            lang
+        );
+        var cur = 20;
         document.getElementById("btnmore").onclick = function () {
-          if (typeof window.list_endid == "undefined") {
-            addBeatmapList("https://catboy.best/api/v2/search?mode=0&p=" + p);
-          } else {
-            if (window.list_endid == 0)
-              document.getElementById("btnmore").innerText =
-                "There's no more beatmaps to load!";
-            else
-              addBeatmapList("https://catboy.best/api/v2/search?mode=0&p=" + p);
-          }
-          p++;
+          addBeatmapList(
+            "https://api.sayobot.cn/beatmaplist?0=20&1=" +
+              cur +
+              "&2=4&5=1&7=" +
+              genre +
+              "&8=" +
+              lang
+          );
+          cur += 20;
         };
         // update buttons state
         for (let i = 0; i < btns.length; ++i) {
