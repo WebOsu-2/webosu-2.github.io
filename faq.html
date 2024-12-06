@@ -1,97 +1,101 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <title>FAQ</title>
-    <link rel="stylesheet" href="style/picnic.min.css" />
-    <link rel="stylesheet" type="text/css" href="style/main.css" />
-    <!-- <link href="//fonts.googleapis.com/css?family=Exo+2:400,600italic" rel="stylesheet" type="text/css"> -->
-    <link rel="stylesheet" type="text/css" href="style/font.css" />
-    <link rel="icon" href="favicon.png" />
-  </head>
 
-  <body>
-    <nav id="main-nav"></nav>
-    
-    <script>
-      fetch("navbar.html")
-        .then((response) => response.text())
-        .then((content) => {
-          document.getElementById("main-nav").innerHTML = content;
-        });
-    </script>
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GZ2M72GJ5S"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
 
-    <div class="main-page" id="main-page">
-      <div class="main-content">
-        <div class="faqentry">
-          <h2>How do I play Osu?</h2>
-          The default keys are the left and right mouse buttons and the Z and X
-          keys, which can be modified in the settings. The circles that appear
-          on the game screen are called strike circles. When the circle outside
-          the strike circle shrinks and falls just on the strike circle, click
-          on the strike circle. Some circles have a slider that you need to hold
-          down and follow as it moves. When a large disk appears on the screen,
-          press and hold a button and quickly rotate your mouse around the
-          center of the circle.
-        </div>
-        <div class="faqentry">
-          <h2>The cursor movement seems to be delayed?</h2>
-          Try enabling the hardware cursor in settings, which can reduce cursor
-          input latency. However, in some operating systems or browsers,
-          problems such as flickering or the inability to display the cursor may
-          occur, so it is turned off by default. In addition, the cursor size
-          adjustment of the current hardware cursor only has 3 fixed levels. The
-          minimum value is displayed below 0.65, and the maximum value is
-          displayed above 0.95.
-        </div>
-        <div class="faqentry">
-          <h2>The game is stuck, what should I do?</h2>
-          It may be that the browser itself consumes a large amount of
-          resources, causing the lag, or it may be that some strange mechanism
-          causes the browser to reduce the frequency of event sending. It is
-          recommended to avoid excessive CPU usage, close anti-virus
-          software/computer manager like Avast, try closing other tabs of the
-          browser and restart the browser. Please make sure you are using a
-          mainstream modern browser (such as Chrome, Firefox, or MS Edge). If
-          it's still stuck,
-          <a href="https://github.com/WebOsu-2/webosu-2.github.io/issues/new"
-            >please file an issue on our github page</a
-          >.
-        </div>
-        <div class="faqentry">
-          <h2>Why is nothing displayed on the web page?</h2>
-          It may be that our API, <a href="https://catboy.best">Mino</a>
-          , is having issues. If so, you can contact the developers of Mino for them to fix it.
-        </div>
-        <div class="faqentry">
-          <h2>
-            The download manager (IDM) on my computer pops up a lot of pop-up
-            windows!
-          </h2>
-          This site uses XHR to load audio and video resources. Please set the
-          download manager (IDM) disabled on this site.
-        </div>
-        <div class="faqentry">
-          <h2>Can I upload beatmaps locally?</h2>
-          This is planned for a later feature. At this moment, you can search
-          for beats already in the library.
-        </div>
-        <div class="faqentry">
-          <h2>What should I do if the audio and/or video are out of sync?</h2>
-          <a href="https://github.com/WebOsu-2/webosu-2.github.io/issues/new"
-            >Please file an issue on our github page</a
-          >
-        </div>
+    gtag('config', 'G-GZ2M72GJ5S');
+  </script>
 
-        <div class="faqentry">
-          <h2>I have other problems not shown here.</h2>
-          <a href="https://github.com/WebOsu-2/webosu-2.github.io/issues/new"
-            >file an issue on our github page</a
-          >
-        </div>
+  <meta charset="utf-8" />
+  <title>FAQ</title>
+  <link rel="stylesheet" href="style/picnic.min.css" />
+  <link rel="stylesheet" type="text/css" href="style/main.css" />
+  <!-- <link href="//fonts.googleapis.com/css?family=Exo+2:400,600italic" rel="stylesheet" type="text/css"> -->
+  <link rel="stylesheet" type="text/css" href="style/font.css" />
+  <link rel="icon" href="favicon.png" />
+</head>
+
+<body>
+  <nav id="main-nav"></nav>
+
+  <script>
+    fetch("navbar.html")
+      .then((response) => response.text())
+      .then((content) => {
+        document.getElementById("main-nav").innerHTML = content;
+      });
+  </script>
+
+  <div class="main-page" id="main-page">
+    <div class="main-content">
+      <div class="faqentry">
+        <h2>How do I play Osu?</h2>
+        The default keys are the left and right mouse buttons and the Z and X
+        keys, which can be modified in the settings. The circles that appear
+        on the game screen are called strike circles. When the circle outside
+        the strike circle shrinks and falls just on the strike circle, click
+        on the strike circle. Some circles have a slider that you need to hold
+        down and follow as it moves. When a large disk appears on the screen,
+        press and hold a button and quickly rotate your mouse around the
+        center of the circle.
+      </div>
+      <div class="faqentry">
+        <h2>The cursor movement seems to be delayed?</h2>
+        Try enabling the hardware cursor in settings, which can reduce cursor
+        input latency. However, in some operating systems or browsers,
+        problems such as flickering or the inability to display the cursor may
+        occur, so it is turned off by default. In addition, the cursor size
+        adjustment of the current hardware cursor only has 3 fixed levels. The
+        minimum value is displayed below 0.65, and the maximum value is
+        displayed above 0.95.
+      </div>
+      <div class="faqentry">
+        <h2>The game is stuck, what should I do?</h2>
+        It may be that the browser itself consumes a large amount of
+        resources, causing the lag, or it may be that some strange mechanism
+        causes the browser to reduce the frequency of event sending. It is
+        recommended to avoid excessive CPU usage, close anti-virus
+        software/computer manager like Avast, try closing other tabs of the
+        browser and restart the browser. Please make sure you are using a
+        mainstream modern browser (such as Chrome, Firefox, or MS Edge). If
+        it's still stuck,
+        <a href="https://github.com/WebOsu-2/webosu-2.github.io/issues/new">please file an issue on our github page</a>.
+      </div>
+      <div class="faqentry">
+        <h2>Why is nothing displayed on the web page?</h2>
+        It may be that our API, <a href="https://catboy.best">Mino</a>
+        , is having issues. If so, you can contact the developers of Mino for them to fix it.
+      </div>
+      <div class="faqentry">
+        <h2>
+          My download manager brings up a lot of pop-up windows!
+        </h2>
+        Webosu uses XHR to load audio and video resources. Please disable your download manager for this site.
+      </div>
+      <div class="faqentry">
+        <h2>Can I upload beatmaps locally?</h2>
+        You can not upload beatmaps here. We get all of our beatmaps from the osu database, upload your own beatmap to
+        osu for it to (eventually) show up here.
+      </div>
+      <div class="faqentry">
+        <h2>What should I do if the audio and/or video are out of sync?</h2>
+        <a href="https://github.com/WebOsu-2/webosu-2.github.io/issues/new">Please file an issue on our github page</a>
+      </div>
+
+      <div class="faqentry">
+        <h2>I have other problems not shown here.</h2>
+        <a href="https://github.com/WebOsu-2/webosu-2.github.io/issues/new">file an issue on our github page</a>
       </div>
     </div>
-  </body>
+  </div>
+</body>
+
 </html>
 
 <!-- attribution -->

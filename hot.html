@@ -1,96 +1,104 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Popular Beatmaps</title>
-    <link rel="stylesheet" href="style/picnic.min.css" />
-    <link rel="stylesheet" type="text/css" href="style/main.css" />
-    <link rel="stylesheet" type="text/css" href="style/font.css" />
-    <link rel="icon" href="favicon.png" />
-    <script src="scripts/launchgame.js"></script>
-    <script src="scripts/downloader.js"></script>
-    <script src="scripts/addbeatmaplist.js"></script>
-    <script src="scripts/settings.js"></script>
-    <script src="scripts/jsloader.js"></script>
-  </head>
 
-  <body>
-    <div class="game-area" id="game-area" hidden></div>
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GZ2M72GJ5S"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
 
-    <div class="pause-menu" id="pause-menu" hidden>
-      <div class="paused-title">paused</div>
-      <div class="button-list">
-        <div class="pausebutton continue" id="pausebtn-continue">
-          <div class="inner">Continue</div>
-        </div>
-        <div class="pausebutton retry" id="pausebtn-retry">
-          <div class="inner">Retry</div>
-        </div>
-        <div class="pausebutton quit" id="pausebtn-quit">
-          <div class="inner">Quit</div>
-        </div>
+    gtag('config', 'G-GZ2M72GJ5S');
+  </script>
+
+  <meta charset="utf-8" />
+  <title>Popular Beatmaps</title>
+  <link rel="stylesheet" href="style/picnic.min.css" />
+  <link rel="stylesheet" type="text/css" href="style/main.css" />
+  <link rel="stylesheet" type="text/css" href="style/font.css" />
+  <link rel="icon" href="favicon.png" />
+  <script src="scripts/launchgame.js"></script>
+  <script src="scripts/downloader.js"></script>
+  <script src="scripts/addbeatmaplist.js"></script>
+  <script src="scripts/settings.js"></script>
+  <script src="scripts/jsloader.js"></script>
+</head>
+
+<body>
+  <div class="game-area" id="game-area" hidden></div>
+
+  <div class="pause-menu" id="pause-menu" hidden>
+    <div class="paused-title">paused</div>
+    <div class="button-list">
+      <div class="pausebutton continue" id="pausebtn-continue">
+        <div class="inner">Continue</div>
+      </div>
+      <div class="pausebutton retry" id="pausebtn-retry">
+        <div class="inner">Retry</div>
+      </div>
+      <div class="pausebutton quit" id="pausebtn-quit">
+        <div class="inner">Quit</div>
       </div>
     </div>
+  </div>
 
-    <nav id="main-nav"></nav>
-    <script>
-      fetch("navbar.html")
-        .then((response) => response.text())
-        .then((content) => {
-          document.getElementById("main-nav").innerHTML = content;
-        });
-    </script>
+  <nav id="main-nav"></nav>
+  <script>
+    fetch("navbar.html")
+      .then((response) => response.text())
+      .then((content) => {
+        document.getElementById("main-nav").innerHTML = content;
+      });
+  </script>
 
-    <div class="main-page" id="main-page">
-      <div class="main-content">
-        <div class="beatmap-list" id="beatmap-list">
-          <!-- to be filled in script -->
-        </div>
-        <div
-          class="button"
-          style="width: 100%; margin-bottom: 10px"
-          id="btnmore"
-        >
-          Load more
-        </div>
-        <div id="footer"></div>
-        <script>
-          fetch("footer.html")
-              .then(response => response.text())
-              .then(content => {
-                  document.getElementById("footer").innerHTML = content;
-              });
-          </script>
+  <div class="main-page" id="main-page">
+    <div class="main-content">
+      <div class="beatmap-list" id="beatmap-list">
+        <!-- to be filled in script -->
       </div>
-      <!-- <div class="side-panel">
+      <div class="button" style="width: 100%; margin-bottom: 10px" id="btnmore">
+        Load more
+      </div>
+      <div id="footer"></div>
+      <script>
+        fetch("footer.html")
+          .then(response => response.text())
+          .then(content => {
+            document.getElementById("footer").innerHTML = content;
+          });
+      </script>
+    </div>
+    <!-- <div class="side-panel">
                 to be activated in script
             </div> -->
-      <div class="statuslines" id="statuslines">
-        <div class="progress" id="script-progress">
-          Scripts
-          <div class="lds-dual-ring"></div>
-        </div>
-        <div class="progress" id="skin-progress">
-          Skin
-          <div class="lds-dual-ring"></div>
-        </div>
-        <div class="progress" id="sound-progress">
-          Hitsounds
-          <div class="lds-dual-ring"></div>
-        </div>
+    <div class="statuslines" id="statuslines">
+      <div class="progress" id="script-progress">
+        Scripts
+        <div class="lds-dual-ring"></div>
+      </div>
+      <div class="progress" id="skin-progress">
+        Skin
+        <div class="lds-dual-ring"></div>
+      </div>
+      <div class="progress" id="sound-progress">
+        Hitsounds
+        <div class="lds-dual-ring"></div>
       </div>
     </div>
-    <script>
-      addBeatmapList("https://api.sayobot.cn/beatmaplist?0=20&1=0&2=1&5=1");
-      var cur = 20;
-      document.getElementById("btnmore").onclick = function () {
-        addBeatmapList(
-          "https://api.sayobot.cn/beatmaplist?0=20&1=" + cur + "&2=1&5=1"
-        );
-        cur += 20;
-      };
-    </script>
-  </body>
+  </div>
+  <script>
+    addBeatmapList("https://api.sayobot.cn/beatmaplist?0=20&1=0&2=1&5=1");
+    var cur = 20;
+    document.getElementById("btnmore").onclick = function () {
+      addBeatmapList(
+        "https://api.sayobot.cn/beatmaplist?0=20&1=" + cur + "&2=1&5=1"
+      );
+      cur += 20;
+    };
+  </script>
+</body>
+
 </html>
 
 <!-- attribution -->
