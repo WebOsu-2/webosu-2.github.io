@@ -212,6 +212,7 @@ var NSaddBeatmapList = {
         pBeatmapCover.alt = "cover" + map.sid;
         pBeatmapCover.src = "https://cdn.sayobot.cn:25225/beatmaps/" + map.sid + "/covers/cover.webp";
         pBeatmapApproved.innerText = approvedText(map.approved);
+        list.appendChild(pBeatmapBox);
         return pBeatmapBox;
     },
 
