@@ -1,182 +1,96 @@
 // beatmap downloader
 
-(() => {
-
-    /**
-     * Preview Audio
-     */
-    class PreviewAudio {
-        /**
-         * Build a PreviewAudio object
-         * @param {string | number} sid Beatmap's sid
-         * @param {number} volume Volume of preview audio
-         */
-        constructor(sid, volume = 1) {
-            const audioContext = new Audio("https://cdn.sayobot.cn:25225/preview/" + sid + ".mp3");
-            this._sid = sid;
-            this._volume = volume;
-            this._audioContext = audioContext;
-            this._playing = false;
-            this._ready = false;
-            this._fadeTimer = 0;
-            this._playTimer = 0;
-            audioContext.load();
-            audioContext.volume = 0;
-            audioContext.addEventListener('canplay', () => {
-                this._ready = true
-                if(this._playing === true){
-                    this.play();
-                }
-            }, {once: true})
-        }
-        play() {
-            this._playing  = true;
-            if(this._ready){
-                this._playing = true
-                this._audioContext.volume = 0;
-                this._audioContext.currentTime = 0;
-                this._audioContext.play();
-                clearInterval(this._fadeTimer);
-                clearTimeout(this._playTimer);
-                this._fadeTimer = setInterval(() => {
-                    if (this._audioContext.volume < this._volume)
-                        this._audioContext.volume = Math.min(this._volume, this._audioContext.volume + 0.05 * this._volume);
-                    else
-                        clearInterval(this._fadeTimer);
-                        clearTimeout(this._playTimer);
-                }, 30);
-                this._playTimer = setTimeout(() => {
-                    this._audioContext.volume = this._volume;
-                    clearInterval(this._fadeTimer);
-                    clearTimeout(this._playTimer);
-                }, 600);
-            }
-        }
-        stop() {
-            this._playing = false
-            clearInterval(this._fadeTimer);
-            clearTimeout(this._playTimer);
-            this._fadeTimer = setInterval(() => {
-                this._audioContext.volume = Math.max(0, this._audioContext.volume - 0.05 * this._volume);
-                if (this._audioContext.volume === 0) {
-                    this._audioContext.pause();
-                    clearInterval(this._fadeTimer);
-                    clearTimeout(this._playTimer);
-                }
-            }, 10);
-            this._playTimer = setTimeout(() => {
-                this._audioContext.pause();
-                clearInterval(this._fadeTimer);
-                clearTimeout(this._playTimer);
-            }, 200);
-        }
-        set volume(value) {
-            this._volume = value;
-        }
-        get volume() {
-            return this._volume;
-        }
+function startpreview(box) {
+    let volume = 1;
+    if (window.gamesettings) {
+        volume = (window.gamesettings.mastervolume/100) * (window.gamesettings.musicvolume/100);
+        volume = Math.min(1, Math.max(0, volume));
     }
-
-    class PreviewAudioManager {
-        /**
-         * Create a preview audio manager
-         * @param {object} [settings] Preview audio manager settings
-         * @param {number} [settings.volume] Audio's volume
-         */
-        constructor(settings = {}) {
-            const {volume} = settings
-            /**
-             * @type {PreviewAudio}
-             */
-            this._active = null;
-            this._volume = volume;
-        }
-        /**
-         * Play preview audio
-         * @param {string | number} sid Beatmap's sid
-         */
-        play(sid) {
-            if(this._active){
-                this._active.stop();
+    let audios = document.getElementsByTagName("audio");
+    for (let i=0; i<audios.length; ++i)
+        if (audios[i].softstop)
+            audios[i].softstop();
+    let a = document.createElement("audio");
+    let s = document.createElement("source");
+    s.src = "https://cdn.sayobot.cn:25225/preview/" + box.sid + ".mp3";
+    s.type = "audio/mpeg";
+    a.appendChild(s);
+    a.volume = 0;
+    a.play();
+    document.body.appendChild(a);
+    let fadeIn = setInterval(function(){
+        if (a.volume < volume)
+            a.volume = Math.min(volume, a.volume + 0.05*volume);
+        else
+            clearInterval(fadeIn);
+    }, 30);
+    let fadeOut = setInterval(function(){
+        if (a.currentTime > 9.3) // assume it's 10s long
+            a.volume = Math.max(0, a.volume - 0.05*volume);
+        if (a.volume == 0)
+            clearInterval(fadeOut);
+    }, 30);
+    a.softstop = function() {
+        let fadeOut = setInterval(function(){
+            a.volume = Math.max(0, a.volume - 0.05*volume);
+            if (a.volume == 0) {
+                clearInterval(fadeOut);
+                a.remove();
             }
-            this._active = new PreviewAudio(sid, this._volume);
-            this._active.play()
-        }
-        stop() {
-            if(this._active){
-                this._active.stop();
-            }
-        }
-        set volume(value) {
-            if(value > 1){
-                value = 1;
-            }
-            this._volume = value;
-            if(this._active) {
-                this._active.volume = value;
-            }
-        }
-        get volume() {
-            return this._volume;
-        }
+        }, 10);
     }
+}
 
-    const previewAudioMgr = new PreviewAudioManager()
+function log_to_server(message) {
+    let url = "http://api.osugame.online/log/?msg=" + message;
+    let xhr = new XMLHttpRequest();
+    xhr.open("GET", url);
+    xhr.send();
+}
 
-    function startpreview(box) {
-        let volume = 1;
-        if (window.gamesettings) {
-            volume = (window.gamesettings.mastervolume/100) * (window.gamesettings.musicvolume/100);
-            volume = Math.min(1, Math.max(0, volume));
-        }
-        previewAudioMgr.volume = volume
-        previewAudioMgr.play(box.sid)
+function startdownload(box) {
+    startpreview(box);
+	if (box.downloading) {
+		return;
+	}
+	let url = "https://txy1.sayobot.cn/beatmaps/download/mini/" + box.sid;
+	box.downloading = true;
+    box.classList.add("downloading");
+    let xhr = new XMLHttpRequest();
+    xhr.responseType = 'arraybuffer';
+    xhr.open("GET", url);
+    // create download progress bar
+    let container = document.createElement("div");
+    let title = document.createElement("div");
+    let bar = document.createElement("progress");
+    container.className = "download-progress";
+    title.className = "title";
+    title.innerText = box.setdata.title;
+    container.appendChild(title);
+    container.appendChild(bar);
+    // insert so that download list from recent to old
+    let statuslines = document.getElementById("statuslines");
+    statuslines.insertBefore(container, statuslines.children[3]);
+    bar.max = 1;
+    bar.value = 0;
+    // async part
+    xhr.onload = function() {
+        box.oszblob = new Blob([xhr.response]);
+        bar.className = "finished";
+        box.classList.remove("downloading");
+        log_to_server("got " + box.sid + " in " + (new Date().getTime() - (box.download_starttime || 0)));
     }
-
-    function startdownload(box) {
-        startpreview(box);
-        if (box.downloading) {
-            return;
-        }
-        let url = "https://txy1.sayobot.cn/beatmaps/download/mini/" + box.sid;
-        box.downloading = true;
-        box.classList.add("downloading");
-        let xhr = new XMLHttpRequest();
-        xhr.responseType = 'arraybuffer';
-        xhr.open("GET", url);
-        // create download progress bar
-        let container = document.createElement("div");
-        let title = document.createElement("div");
-        let bar = document.createElement("progress");
-        container.className = "download-progress";
-        title.className = "title";
-        title.innerText = box.setdata.title;
-        container.appendChild(title);
-        container.appendChild(bar);
-        // insert so that download list from recent to old
-        let statuslines = document.getElementById("statuslines");
-        statuslines.insertBefore(container, statuslines.children[3]);
-        bar.max = 1;
-        bar.value = 0;
-        // async part
-        xhr.onload = function() {
-            box.oszblob = new Blob([xhr.response]);
-            bar.className = "finished";
-            box.classList.remove("downloading");
-        }
-        xhr.onprogress = function(e) {
-            bar.value = e.loaded / e.total;
-        }
-        xhr.onerror = function() {
-            console.error("download failed");
-            alert("Beatmap download failed. Please retry later.")
-            box.downloading = false;
-            box.classList.remove("downloading");
-        }
-        xhr.send();
+    xhr.onprogress = function(e) {
+		bar.value = e.loaded / e.total;
     }
-
-    window.startdownload = startdownload
-    window.previewAudioMgr = previewAudioMgr
-})()
+    xhr.onerror = function() {
+    	console.error("download failed");
+        alert("Beatmap download failed. Please retry later.")
+		box.downloading = false;
+        box.classList.remove("downloading");
+        log_to_server("fail " + box.sid);
+    }
+    xhr.send();
+    // start time (for logging)
+    box.download_starttime = new Date().getTime();
+}

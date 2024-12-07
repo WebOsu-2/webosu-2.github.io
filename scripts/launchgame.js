@@ -10,7 +10,7 @@ function launchOSU(osu, beatmapid, version) {
       trackid = i;
   console.log("launching", beatmapid, version);
   if (trackid == -1) {
-    console.error("no suck track");
+    console.error("no such track");
     console.log("available tracks are:");
     for (let i = 0; i < osu.tracks.length; ++i)
       console.log(
@@ -118,7 +118,6 @@ function launchOSU(osu, beatmapid, version) {
   // start main loop
   gameLoop = function (timestamp) {
     if (game.scene) {
-      //console.log(game.cursor);
       game.scene.render(timestamp);
     }
     if (game.cursor) {
