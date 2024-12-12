@@ -29,8 +29,7 @@ html, body {
 canvas {
   display: block;
 }
-.game-area {
-}
+
 .game-area.showhwmousemedium {
   cursor: url("cursor.cur") 40 40, url("cursorsmall.cur") 30 30, crosshair !important;
 }
@@ -594,8 +593,6 @@ thead {
   content: "History Best: ";
 }
 
-.grading .fullcombo {
-}
 .grading .fullcombo:before {
   position: absolute;
   content: "Full Combo";
