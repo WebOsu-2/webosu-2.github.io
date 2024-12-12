@@ -325,6 +325,65 @@ thead {
   background: #aa1b27;
 }
 
+.accordion-icon {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: rotate(45deg); /* Default chevron angle */
+  transition: transform 0.4s ease, margin 0.3s ease;
+  margin-top: 0; /* Small adjustment for centering */
+  flex-shrink: 0; /* Prevents resizing */
+  
+}
+
+.accordion.active .accordion-icon {
+  transform: rotate(-135deg); /* Rotated chevron when open */
+  margin-top: 4px; /* Re-adjusts when rotated */
+}
+
+/* Style the buttons that are used to open and close the accordion panel */
+.accordion {
+  background: #007BFF;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 18px;
+  width: 100%;
+  border: none;
+  outline: none;
+  transition: 0.4s;
+  display: flex; /* Flexbox for alignment */
+  justify-content: space-between; /* Ensures spacing between text and icon */
+  align-items: center; /* Aligns text and icon vertically */
+}
+
+.accordion:hover {
+  background: #0056A8; /* Slightly darker blue */
+  color: #FFFFFF;
+}
+
+/* Add a background color to the button if it is clicked on (add the .active class with JS), and when you move the mouse over it (hover) */
+.active.accordion {
+  
+  background: #0066CC;
+  color: #FFFFFF;
+}
+
+
+/* Style the accordion panel. Note: hidden by default */
+.settings-section {
+  padding: 0 18px;
+  background-color: #3C3C3C;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease-out;
+  border-radius: 5px;
+}
+
+.settings-section.active {
+  box-shadow: 0 0 20px rgba(138, 43, 226, 0.4);
+}
 
 /*in-game grading menu*/
 .grading {
@@ -692,7 +751,7 @@ thead {
 	box-shadow: 0 2px 3px 0 rgba(0,0,0,.1); 
 	margin: 12px auto;
 	padding:15px;
-	width:370px;
+	width:570px;
 	height:100%;
 }
 h1,h2,h3 {
