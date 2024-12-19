@@ -100,18 +100,20 @@
         </div>
       </div>
 
+      <footer id="footer"></footer>
+      <script>
+        fetch("footer.html")
+          .then(response => response.text())
+          .then(content => {
+            document.getElementById("footer").innerHTML = content;
+          });
+      </script>
+
     </div>
     <div class="column right">
     </div>
   </div>
-  <footer id="footer"></footer>
-  <script>
-    fetch("footer.html")
-      .then(response => response.text())
-      .then(content => {
-        document.getElementById("footer").innerHTML = content;
-      });
-  </script>
+
 
   <div class="statuslines" id="statuslines">
     <div class="progress" id="script-progress">
