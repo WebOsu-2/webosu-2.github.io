@@ -295,7 +295,7 @@ function(Osu, setPlayerActions, SliderMesh, ScoreOverlay, VolumeMenu, LoadingMen
         }
 
         this.createJudgement = function(x, y, depth, finalTime) {
-            let judge = new PIXI.BitmapText('', {font: {name: 'Venera', size: 20}});
+            let judge = new PIXI.BitmapText('', {fontName : 'Venera', fontSize: 20,});
             judge.anchor.set(0.5);
             judge.scale.set(0.85 * this.hitSpriteScale, 1 * this.hitSpriteScale);
             judge.visible = false;

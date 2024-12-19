@@ -37,7 +37,7 @@ define([], function()
         this.addChild(this.barleft);
         this.addChild(this.barright);
 
-        this.number = new PIXI.BitmapText("", {font: {name: 'Venera', size: 40}});
+        this.number = new PIXI.BitmapText("", {fontName: 'Venera', fontSize: 40});
         this.number.anchor.set(0.5);
         this.number.x = 0;
         this.number.y = -40;

@@ -1,96 +1,141 @@
-// beatmap downloader
-
+// Function to start previewing a beatmap
 function startpreview(box) {
+    // Set initial volume
     let volume = 1;
+
+    // Check for window.gamesettings and adjust volume accordingly
     if (window.gamesettings) {
-        volume = (window.gamesettings.mastervolume/100) * (window.gamesettings.musicvolume/100);
+        volume = (window.gamesettings.mastervolume / 100) * (window.gamesettings.musicvolume / 100);
         volume = Math.min(1, Math.max(0, volume));
     }
-    let audios = document.getElementsByTagName("audio");
-    for (let i=0; i<audios.length; ++i)
-        if (audios[i].softstop)
-            audios[i].softstop();
-    let a = document.createElement("audio");
-    let s = document.createElement("source");
-    s.src = "https://cdn.sayobot.cn:25225/preview/" + box.sid + ".mp3";
-    s.type = "audio/mpeg";
-    a.appendChild(s);
-    a.volume = 0;
-    a.play();
-    document.body.appendChild(a);
-    let fadeIn = setInterval(function(){
-        if (a.volume < volume)
-            a.volume = Math.min(volume, a.volume + 0.05*volume);
-        else
+
+    // Stop any currently playing audio using a loop
+    for (let audio of document.getElementsByTagName("audio")) {
+        if (audio.softstop) {
+            audio.softstop();
+        }
+    }
+
+    // Create audio element and source for the preview
+    const audio = document.createElement("audio");
+    const source = document.createElement("source");
+    console.log("pazinga");
+    source.src = `https://cdn.sayobot.cn:25225/preview/${box.sid}.mp3`;
+    source.type = "audio/mpeg";
+    audio.appendChild(source);
+
+    // Set initial volume to 0 and start playing
+    audio.volume = 0;
+    audio.play();
+    document.body.appendChild(audio);
+
+    // Function to gradually increase volume
+    const fadeIn = setInterval(() => {
+        if (audio.volume < volume) {
+            audio.volume = Math.min(volume, audio.volume + 0.05 * volume);
+        } else {
             clearInterval(fadeIn);
+        }
     }, 30);
-    let fadeOut = setInterval(function(){
-        if (a.currentTime > 9.3) // assume it's 10s long
-            a.volume = Math.max(0, a.volume - 0.05*volume);
-        if (a.volume == 0)
+
+    // Function to gradually decrease volume and remove audio
+    const fadeOut = setInterval(() => {
+        if (audio.currentTime > 9.3) { // Assuming preview is 10 seconds long
+            audio.volume = Math.max(0, audio.volume - 0.05 * volume);
+        }
+        if (audio.volume === 0) {
             clearInterval(fadeOut);
+            audio.remove();
+        }
     }, 30);
-    a.softstop = function() {
-        let fadeOut = setInterval(function(){
-            a.volume = Math.max(0, a.volume - 0.05*volume);
-            if (a.volume == 0) {
-                clearInterval(fadeOut);
-                a.remove();
+
+    // Soft stop function for the audio element
+    audio.softstop = function () {
+        const fadeOutInterval = setInterval(() => {
+            audio.volume = Math.max(0, audio.volume - 0.05 * volume);
+            if (audio.volume === 0) {
+                clearInterval(fadeOutInterval);
+                audio.remove();
             }
         }, 10);
-    }
+    };
 }
-
-function log_to_server(message) {
-    let url = "http://api.osugame.online/log/?msg=" + message;
-    let xhr = new XMLHttpRequest();
-    xhr.open("GET", url);
-    xhr.send();
-}
-
 function startdownload(box) {
     startpreview(box);
-	if (box.downloading) {
-		return;
-	}
-	let url = "https://txy1.sayobot.cn/beatmaps/download/mini/" + box.sid;
-	box.downloading = true;
+    if (box.downloading) {
+        return;
+    }
+
+    const url = `https://txy1.sayobot.cn/beatmaps/download/mini/${box.sid}`;
+    box.downloading = true;
     box.classList.add("downloading");
-    let xhr = new XMLHttpRequest();
-    xhr.responseType = 'arraybuffer';
-    xhr.open("GET", url);
-    // create download progress bar
-    let container = document.createElement("div");
-    let title = document.createElement("div");
-    let bar = document.createElement("progress");
+
+    const container = document.createElement("div");
     container.className = "download-progress";
+    const title = document.createElement("div");
     title.className = "title";
     title.innerText = box.setdata.title;
-    container.appendChild(title);
-    container.appendChild(bar);
-    // insert so that download list from recent to old
-    let statuslines = document.getElementById("statuslines");
-    statuslines.insertBefore(container, statuslines.children[3]);
+    const bar = document.createElement("progress");
     bar.max = 1;
     bar.value = 0;
-    // async part
-    xhr.onload = function() {
-        box.oszblob = new Blob([xhr.response]);
-        bar.className = "finished";
-        box.classList.remove("downloading");
-        log_to_server("got " + box.sid + " in " + (new Date().getTime() - (box.download_starttime || 0)));
+
+    container.appendChild(title);
+    container.appendChild(bar);
+
+    const statuslines = document.getElementById("statuslines");
+    if (statuslines) {
+        statuslines.insertBefore(container, statuslines.children[3]);
+    } else {
+        console.error("statuslines element not found");
     }
-    xhr.onprogress = function(e) {
-		bar.value = e.loaded / e.total;
-    }
-    xhr.onerror = function() {
-    	console.error("download failed");
-        alert("Beatmap download failed. Please retry later.")
-		box.downloading = false;
-        box.classList.remove("downloading");
-        log_to_server("fail " + box.sid);
-    }
-    xhr.send();
-    // start time (for logging)
+
     box.download_starttime = new Date().getTime();
+
+    fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const contentLength = response.headers.get('content-length');
+            if (!contentLength) {
+                throw new Error("Content-Length header is missing");
+            }
+
+            const total = parseInt(contentLength, 10);
+            let loaded = 0;
+            bar.max = total;
+
+            const reader = response.body.getReader();
+            const chunks = [];
+
+            function read() {
+                return reader.read().then(({ done, value }) => {
+                    if (done) {
+                        return;
+                    }
+
+                    loaded += value.length;
+                    bar.value = loaded;
+
+                    chunks.push(value);
+                    return read();
+                });
+            }
+
+            return read().then(() => {
+                return new Blob(chunks);
+            });
+        })
+        .then(blob => {
+            box.oszblob = blob;
+            bar.className = "finished";
+            box.classList.remove("downloading");
+        })
+        .catch(error => {
+            console.error("Download failed:", error);
+            alert("Beatmap download failed. Please retry later.");
+            box.downloading = false;
+            box.classList.remove("downloading");
+        });
 }

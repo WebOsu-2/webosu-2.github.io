@@ -22,11 +22,11 @@ define([], function()
         this.bg.alpha = 0.8;
         this.addChild(this.bg);
 
-        this.titletext = new PIXI.BitmapText(track.metadata.Title || '-', {font: {name: 'Venera', size: 24}});
-        this.artisttext = new PIXI.BitmapText(track.metadata.Artist || '-', {font: {name: 'Venera', size: 14}});
-        this.versiontext = new PIXI.BitmapText(track.metadata.Version || '-', {font: {name: 'Venera', size: 14}});
-        this.sourcetext = new PIXI.BitmapText("Source: " + (track.metadata.Source || '-'), {font: {name: 'Venera', size: 14}});
-        this.mappertext = new PIXI.BitmapText("Mapper: " + (track.metadata.Creator || '-'), {font: {name: 'Venera', size: 14}});
+        this.titletext = new PIXI.BitmapText(track.metadata.Title || '-', {fontName: 'Venera', fontSize: 24});
+        this.artisttext = new PIXI.BitmapText(track.metadata.Artist || '-', {fontName: 'Venera', fontSize: 14});
+        this.versiontext = new PIXI.BitmapText(track.metadata.Version || '-', {fontName: 'Venera', fontSize: 14});
+        this.sourcetext = new PIXI.BitmapText("Source: " + (track.metadata.Source || '-'), {fontName: 'Venera', fontSize: 14});
+        this.mappertext = new PIXI.BitmapText("Mapper: " + (track.metadata.Creator || '-'), {fontName: 'Venera', fontSize: 14});
         this.titletext.anchor.set(0.5);
         this.artisttext.anchor.set(0.5);
         this.versiontext.anchor.set(0.5);

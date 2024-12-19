@@ -249,29 +249,6 @@ define([], function()
             this.setSpriteArrayPos(this.comboDigits, basex + this.scoreDigits.width / 2 + 16*unit, basey + 3*unit);
         }
 
-        function uploadScore(summary) {
-            let xhr = new XMLHttpRequest();
-            let url = "http://api.osugame.online/send/";
-            url += "?sid=" + summary.sid;
-            url += "&bid=" + summary.bid;
-            url += "&title=" + summary.title;
-            url += "&version=" + summary.version;
-            url += "&mods=" + summary.mods;
-            url += "&grade=" + summary.grade;
-            url += "&score=" + summary.score;
-            url += "&combo=" + summary.combo;
-            url += "&acc=" + summary.acc;
-            url += "&time=" + summary.time;
-            xhr.open("GET", url);
-            console.log(url);
-            xhr.onload = function() {
-                console.log("play record uploaded");
-            }
-            xhr.onerror = function() {
-                console.error("play record upload failed");
-            }
-            xhr.send();
-        }
 
         this.showSummary = function(metadata, hiterrors, retryCallback, quitCallback) {
             function errortext(a) {
@@ -368,7 +345,6 @@ define([], function()
                 time: new Date().getTime()
             }
             addPlayHistory(summary);
-            uploadScore(summary);
             // show history best
             if (window.localforage && summary.bid) {
                 window.localforage.getItem("historybest", function(err, val) {
