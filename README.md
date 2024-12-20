@@ -21,8 +21,8 @@ game in action:
 
 ## Todo list
 
+- Update from outdated PixiJS v6 to v8
 - uploadable skins
-- performance points (pp)
 - ability to switch between beatmap providers
 
 ## License Notes

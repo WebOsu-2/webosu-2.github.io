@@ -1,5 +1,7 @@
 # Contributor Covenant Code of Conduct
 
+If possible, community leaders will provide support for individuals requiring translations or clarifications of this document.
+
 ## Our Pledge
 
 We as members, contributors, and leaders pledge to make participation in our
@@ -17,7 +19,7 @@ diverse, inclusive, and healthy community.
 Examples of behavior that contributes to a positive environment for our
 community include:
 
-* Demonstrating empathy and kindness toward other people
+* Demonstrating empathy and kindness toward others
 * Being respectful of differing opinions, viewpoints, and experiences
 * Giving and gracefully accepting constructive feedback
 * Accepting responsibility and apologizing to those affected by our mistakes,
@@ -36,12 +38,14 @@ Examples of unacceptable behavior include:
 * Other conduct which could reasonably be considered inappropriate in a
   professional setting
 
+Community leaders are expected to model appropriate behavior and are equally subject to these standards.
+
 ## Enforcement Responsibilities
 
 Community leaders are responsible for clarifying and enforcing our standards of
 acceptable behavior and will take appropriate and fair corrective action in
 response to any behavior that they deem inappropriate, threatening, offensive,
-or harmful.
+or harmful. 
 
 Community leaders have the right and responsibility to remove, edit, or reject
 comments, commits, code, wiki edits, issues, and other contributions that are
@@ -50,23 +54,27 @@ decisions when appropriate.
 
 ## Scope
 
-This Code of Conduct applies within all community spaces, and also applies when
-an individual is officially representing the community in public spaces.
+This Code of Conduct applies within all community spaces, such as GitHub repositories, forums, chat rooms (e.g., Discord), and other public spaces where members interact, and also applies when
+an individual is officially representing the community in public spaces. 
 Examples of representing our community include using an official e-mail address,
 posting via an official social media account, or acting as an appointed
 representative at an online or offline event.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-mostlime@outlook.com.
+Reports of abusive, harassing, or otherwise unacceptable behavior should be directed to community leaders responsible for enforcement, who can be contacted through mostlime@outlook.com.
 All complaints will be reviewed and investigated promptly and fairly.
+
+Information will be shared only with those responsible for resolving the issue and only as necessary to address the situation.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
 
+Reporters and involved parties will be informed of the enforcement decision and reasons for the action when appropriate and possible.
+
 ## Enforcement Guidelines
+
+The goal of enforcement is to uphold community standards while fostering understanding and respect among all parties.
 
 Community leaders will follow these Community Impact Guidelines in determining
 the consequences for any action they deem in violation of this Code of Conduct:
@@ -111,6 +119,10 @@ individual, or aggression toward or disparagement of classes of individuals.
 
 **Consequence**: A permanent ban from any sort of public interaction within
 the community.
+
+## Appeals
+
+Individuals subject to enforcement actions may appeal decisions by contacting community leaders via the provided email address. Appeals will be evaluated impartially and handled promptly.
 
 ## Attribution
 
