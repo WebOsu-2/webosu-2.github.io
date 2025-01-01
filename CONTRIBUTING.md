@@ -8,13 +8,13 @@ Following these guidelines helps to communicate that you respect the time of the
 WebOsu is an open source project and we love to receive contributions from our community — you! There are many ways to contribute, from writing tutorials or blog posts, improving the documentation, submitting bug reports and feature requests or writing code which can be incorporated into WebOsu itself. Every little thing helps.
 
 ### What kind of contributions are *not* accepted?
-Please, don't use the issue tracker for non-technical questions. Email MostLime directly (mostlime@outlook.com) or DM him on Discord (mostlime12195). You can also find many answers to your questions on non-webosu related areas, like IO games forum (https://iogames.forum).
+Please, don't use the issue tracker for non-technical questions. Email MostLime directly (mostlime@outlook.com) or DM him on Discord (mostlime12195). You can also ask and find questions and answers in our [GitHub Discussions page](https://github.com/WebOsu-2/webosu-2.github.io/discussions).
 
 ## Responsibilities for contributers
 There are certain responsibilities for contributers:
 - Make sure you keep your code compatible for all devices (touchscreen, IOS, PC, etc.) The community can help test certain platforms.
 - Format your code neatly and consistently.
-- Please give variables clear and understandable names while also using naming conventions. See https://curc.readthedocs.io/en/latest/programming/coding-best-practices.html.
+- Please give variables clear and understandable names while also using proper naming conventions. See https://curc.readthedocs.io/en/latest/programming/coding-best-practices.html.
 - Please remain kind and respectful.
 - Keep an open mind and use others' ideas and opinions to improve on your own code.
 
@@ -25,11 +25,11 @@ Unsure where to begin contributing to WebOsu? You can start by looking through t
 Is this your first time contributing to an open-sourced project? No problem, we all had a first time. You can learn here: https://egghead.io/series/how-to-contribute-to-an-open-source-project-on-github
 
 ## How to contribute:
-First, create a fork of the code. Then make as many changes as you'd like to it. Afterwards, test your code to make sure it functions correctly (I prefer using the Live Server VSCode extension for that!). Once you're all done, you submit a pull request to our dev branch! (please make sure the name of your PR follows a the naming convetion here: https://www.conventionalcommits.org/en/v1.0.0/.
+First, create a fork of our code. Then make as many changes as you'd like to it. Afterwards, test your code to make sure it functions correctly. Once you're all done, you submit a pull request to our master branch! (please make sure the name of your PR follows a the naming convention [here](https://www.conventionalcommits.org/en/v1.0.0/)).
 And that's it! As simple as simple could be. 
 
 ## How do I get a pull request accepted?
 I, MostLime, will review pull requests shortly after they have been submitted. I may provide feedback that I expect you to implement, the pull request may be accepted once changes have been made.
 
 ## What to discuss things in more detail?
-I frequent Discord all the time, and yes, I do accept random friend requests. Feel free to message me there: mostlime12195 is my username.
+I frequent Discord all the time. Feel free to message me there: mostlime12195 is my username. You can also email me through mostlime@outlook.com.
