@@ -24,14 +24,26 @@ function launchOSU(osu, beatmapid, version) {
   if (window.app) return;
   console.log("launching PIXI app");
   // launch PIXI app
+  let viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
   let app = (window.app = new PIXI.Application({
     width: window.innerWidth,
-    height: window.innerHeight,
+    height: viewportHeight,
     resolution: window.devicePixelRatio || 1,
     autoDensity: true,
   }));
   app.renderer.autoResize = true;
   app.renderer.backgroundColor = 0x111111;
+
+  // Add a resize listener to update the canvas dimensions dynamically
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      app.renderer.resize(window.innerWidth, window.visualViewport.height);
+    });
+  } else {
+    window.addEventListener("resize", () => {
+      app.renderer.resize(window.innerWidth, window.innerHeight);
+    });
+  }
 
   // remember where the page is scrolled to
   let scrollTop = document.body.scrollTop;
