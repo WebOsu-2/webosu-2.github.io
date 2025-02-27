@@ -38,7 +38,16 @@ canvas {
   display: block;
 }
 
-
+.game-area {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  /* include safe area inset at bottom */
+  height: calc(100vh + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  margin: 0;
+}
 
 .game-area.showhwmousemedium {
   cursor: url("cursor.cur") 40 40, url("cursorsmall.cur") 30 30, crosshair !important;
