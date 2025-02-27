@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - 'master'  # Keeps 'master' as the trigger branch
+permissions:
+  contents: write
 
 jobs:
   checkout-minify-push:
@@ -44,3 +46,5 @@ jobs:
           git add -A
           git commit -m "Automated minify of ${{ github.sha }}" || echo "No changes to commit"
           git push --force origin gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
