@@ -1645,3 +1645,12 @@ body:not(.sound-ready) .difficulty-item {
   line-height: 0.8em;
   animation: none;
 }
+
+#footer {
+  background-color: #292929;
+  color: #fff;
+  text-align: center;
+  padding: 1em;
+  margin-top: 1em;
+  width: 100%;
+}

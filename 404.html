@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-GZ2M72GJ5S"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'G-GZ2M72GJ5S');
+    </script>
+
+    <meta charset="utf-8" />
+    <title>404 - Page Not Found</title>
+    <link rel="stylesheet" href="style/picnic.min.css" />
+    <link rel="stylesheet" type="text/css" href="style/main.css" />
+    <!-- <link href="//fonts.googleapis.com/css?family=Exo+2:400,600italic" rel="stylesheet" type="text/css"> -->
+    <link rel="stylesheet" type="text/css" href="style/font.css" />
+    <link rel="icon" href="favicon.png" />
+
+    <meta name="viewport" content="width=device-width">
+    <meta name="description"
+    content="Play WebOsu – A browser-based rhythm game inspired by osu!std. Experience fast-paced gameplay with an extensive beatmap library. No downloads, play free online now!">
+
+</head>
+
+<body>
+    <nav id="main-nav"></nav>
+
+    <script>
+        fetch("navbar.html")
+            .then((response) => response.text())
+            .then((content) => {
+                document.getElementById("main-nav").innerHTML = content;
+            });
+    </script>
+
+    <div class="main-page" id="main-page">
+        <div class="main-content">
+            <h1 style="text-align: center; font-size: 8em;">404</h1>
+            <p style="text-align: center; font-size: 2em;">The page you are looking for was not found.</p>
+        </div>
+    </div>
+    <footer id="footer"></footer>
+    <script>
+        fetch("footer.html")
+            .then(response => response.text())
+            .then(content => {
+                document.getElementById("footer").innerHTML = content;
+            });
+    </script>
+</body>
+
+</html>
