@@ -32,16 +32,21 @@ function launchOSU(osu, beatmapid, version) {
     autoDensity: true,
   }));
   app.renderer.autoResize = true;
-  app.renderer.backgroundColor = 0x111111;
+  app.renderer.background.color = 0x111111;
 
   // Add a resize listener to update the canvas dimensions dynamically
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", () => {
-      app.renderer.resize(window.innerWidth, window.visualViewport.height);
+      if (app && app.renderer) {
+        let vpHeight = window.visualViewport.height || window.innerHeight;
+        app.renderer.resize(window.innerWidth, vpHeight);
+      }
     });
   } else {
     window.addEventListener("resize", () => {
-      app.renderer.resize(window.innerWidth, window.innerHeight);
+      if (app && app.renderer) {
+        app.renderer.resize(window.innerWidth, window.innerHeight);
+      }
     });
   }
 

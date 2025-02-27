@@ -6,37 +6,38 @@
 *
 */
 
-define([], function()
-{
-    function VolumeMenu(windowfield) // constructor. 
-    {
-        PIXI.Container.call(this);
-        this.fadetime = 1000;
-        this.visible = false;
-        this.alpha = 1;
-        this.t0 = 0;
+define([], function () {
+    class VolumeMenu extends PIXI.Container {
+        constructor(windowfield) {
+            super();
+            this.fadetime = 1000;
+            this.visible = false;
+            this.alpha = 1;
+            this.t0 = 0;
 
-        this.mastertext = new PIXI.BitmapText('MASTER', {fontName: 'Venera', fontSize: 24});
-        this.mastertext.anchor.set(0.5);
-        this.volumetext = new PIXI.BitmapText('', {fontName: 'Venera', fontSize: 40});
-        this.volumetext.anchor.set(0.5);
-        this.addChild(this.mastertext);
-        this.addChild(this.volumetext);
-        
-        this.resize = function(windowfield) {
-            this.mastertext.x = windowfield.width - 100;
-            this.mastertext.y = windowfield.height/2 - 30;
-            this.volumetext.x = windowfield.width - 100;
-            this.volumetext.y = windowfield.height/2 + 10;
+            this.mastertext = new PIXI.BitmapText('MASTER', { fontName: 'Venera', fontSize: 24 });
+            this.mastertext.anchor.set(0.5);
+            this.volumetext = new PIXI.BitmapText('', { fontName: 'Venera', fontSize: 40 });
+            this.volumetext.anchor.set(0.5);
+            this.addChild(this.mastertext);
+            this.addChild(this.volumetext);
+            
+            this.resize(windowfield);
         }
-        this.resize(windowfield);
 
-        this.setVolume = function(volume) {
+        resize(windowfield) {
+            this.mastertext.x = windowfield.width - 100;
+            this.mastertext.y = windowfield.height / 2 - 30;
+            this.volumetext.x = windowfield.width - 100;
+            this.volumetext.y = windowfield.height / 2 + 10;
+        }
+
+        setVolume(volume) {
             this.changed = true;
             this.volumetext.text = Math.round(volume).toString();
         }
 
-        this.update = function(timestamp) {
+        update(timestamp) {
             if (this.changed) {
                 this.visible = true;
                 this.t0 = timestamp;
@@ -47,24 +48,15 @@ define([], function()
             let dt = timestamp - this.t0;
             if (dt > this.fadetime) {
                 this.visible = false;
-            }
-            else {
-                this.alpha = 1 - Math.pow(dt/this.fadetime, 5);
+            } else {
+                this.alpha = 1 - Math.pow(dt / this.fadetime, 5);
             }
         }
 
+        destroy(options) {
+            super.destroy(options);
+        }
     }
-    
-    if ( PIXI.Container ) { VolumeMenu.__proto__ = PIXI.Container; }
-    VolumeMenu.prototype = Object.create( PIXI.Container && PIXI.Container.prototype );
-    VolumeMenu.prototype.constructor = VolumeMenu;
-
-
-    VolumeMenu.prototype.destroy = function destroy (options)
-    {
-        PIXI.Container.prototype.destroy.call(this, options);
-    };
 
     return VolumeMenu;
-
 });

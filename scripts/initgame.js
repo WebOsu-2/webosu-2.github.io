@@ -80,14 +80,14 @@ function(Osu, _, sound, Playback) {
 
 
     // load skin & game cursor
-    PIXI.Loader.shared
-    .add('fonts/venera.fnt')
-    .add("sprites.json").load(function(loader, resources) {
+    PIXI.Assets.load(['fonts/venera.fnt', 'sprites.json']).then((resources) => {
         window.skinReady = true;
         document.getElementById("skin-progress").classList.add("finished");
         document.body.classList.add("skin-ready");
-        Skin = PIXI.Loader.shared.resources["sprites.json"].textures;
+    
+        Skin = resources['sprites.json'].textures; // Maintain the same variable assignment
     });
+    
 
 
     // load sounds
