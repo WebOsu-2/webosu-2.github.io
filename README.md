@@ -21,9 +21,11 @@ game in action:
 
 ## Todo list
 
-- Update from outdated PixiJS v7 to v8
-- uploadable skins
-- ability to switch between beatmap providers
+[ x ] - Update from outdated PixiJS v6 to v7
+[ ] - Improve site effeciency and performance
+[ ] - Update from outdated PixiJS v7 to v8
+[ ] - uploadable skins
+[ ] - ability to switch between beatmap providers
 
 ## License Notes
 
