@@ -35,7 +35,8 @@ jobs:
       # Minify HTML files (overwrite original files)
       - name: Minify HTML
         run: |
-          find . -maxdepth 1 -name "*.html" -exec sh -c 'html-minifier --collapse-boolean-attributes --collapse-whitespace --minify-css --minify-js --minify-urls --remove-attribute-quotes --remove-empty-attributes --remove-redundant-attributes --remove-script-type-attributes --remove-style-link-type-attributes --use-short-doctype -o "{}"' \;
+          find . -maxdepth 1 -name "*.html" -exec sh -c 'for f; do html-minifier "$f" --collapse-boolean-attributes --collapse-whitespace --minify-css --minify-js --minify-urls --remove-attribute-quotes --remove-empty-attributes --remove-redundant-attributes --remove-script-type-attributes --remove-style-link-type-attributes --use-short-doctype -o "$f.tmp" && mv "$f.tmp" "$f"; done' sh {} +
+
 
       # Push changes to `gh-pages` branch
       - name: Push to gh-pages branch
