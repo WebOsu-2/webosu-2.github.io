@@ -45,7 +45,6 @@ jobs:
           git checkout -B gh-pages || git checkout --orphan gh-pages
           git add -A
           git commit -m "Automated minify of ${{ github.sha }}" || echo "No changes to commit"
-          git pull --rebase origin gh-pages
           git push origin gh-pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
