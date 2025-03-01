@@ -42,7 +42,8 @@ jobs:
         run: |
           git config pull.rebase false
           git checkout -B gh-pages || git checkout --orphan gh-pages
-          git pull origin gh-pages
+          git fetch origin gh-pages --unshallow || true
+          git reset --soft origin/gh-pages || true
           git add -A
           git commit -m "Automated minify of ${{ github.sha }}" || echo "No changes to commit"
           git push origin gh-pages
