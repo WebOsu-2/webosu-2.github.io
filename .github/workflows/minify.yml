@@ -40,6 +40,7 @@ jobs:
       # Push changes to `gh-pages` branch
       - name: Push to gh-pages branch
         run: |
+          git config pull.rebase false
           git checkout -B gh-pages || git checkout --orphan gh-pages
           git pull origin gh-pages
           git add -A
