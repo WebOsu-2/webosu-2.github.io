@@ -41,6 +41,8 @@ jobs:
       - name: Push to gh-pages branch
         run: |
           git config pull.rebase false
+          git config --global user.email "mostlime@outlook.com"
+          git config --global user.name "Mostlime12195"
           git checkout -B gh-pages || git checkout --orphan gh-pages
           git fetch origin gh-pages --unshallow || true
           git reset --soft origin/gh-pages || true
