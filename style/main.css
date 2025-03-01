@@ -1153,7 +1153,7 @@ progress.finished::-webkit-progress-value {
 }
 
 .beatmaplike.hint-liked::after {
-  content: "已收藏";
+  content: "Added to Favorites";
   white-space: nowrap;
   position: absolute;
   bottom: 32px;

@@ -211,6 +211,9 @@ var NSaddBeatmapList = {
         pBeatmapCreator.innerText = "mapped by " + map.creator;
         pBeatmapCover.alt = "cover" + map.sid;
         pBeatmapCover.src = "https://cdn.sayobot.cn:25225/beatmaps/" + map.sid + "/covers/cover.webp";
+        pBeatmapCover.loading = "lazy";
+        pBeatmapCover.width = "100%";
+        pBeatmapCover.height = "130px";
         pBeatmapApproved.innerText = approvedText(map.approved);
         if (list) {
             list.appendChild(pBeatmapBox);
