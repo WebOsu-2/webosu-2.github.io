@@ -35,16 +35,19 @@ jobs:
       # Minify HTML files (overwrite original files)
       - name: Minify HTML
         run: |
-          find . -maxdepth 1 -name "*.html" -exec sh -c 'html-minifier --collapse-boolean-attributes --collapse-whitespace --minify-css --minify-js --minify-urls --remove-attribute-quotes --remove-comments --remove-empty-attributes --remove-optional-tags --remove-redundant-attributes --remove-script-type-attributes --remove-style-link-type-attributes --remove-tag-whitespace --use-short-doctype -o "{}" "{}"' \;
+          find . -maxdepth 1 -name "*.html" -exec sh -c 'html-minifier --collapse-boolean-attributes --collapse-whitespace --minify-css --minify-js --minify-urls --remove-attribute-quotes --remove-empty-attributes --remove-redundant-attributes --remove-script-type-attributes --remove-style-link-type-attributes --use-short-doctype -o "{}"' \;
 
       # Push changes to `gh-pages` branch
       - name: Push to gh-pages branch
         run: |
-          git config --global user.name "mostlime12195"
+          git config pull.rebase false
           git config --global user.email "mostlime@outlook.com"
-          git checkout -B gh-pages
+          git config --global user.name "Mostlime12195"
+          git checkout -B gh-pages || git checkout --orphan gh-pages
+          git fetch origin gh-pages --unshallow || true
+          git reset --soft origin/gh-pages || true
           git add -A
           git commit -m "Automated minify of ${{ github.sha }}" || echo "No changes to commit"
-          git push --force origin gh-pages
+          git push origin gh-pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
