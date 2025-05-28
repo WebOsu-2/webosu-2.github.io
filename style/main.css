@@ -141,16 +141,13 @@ nav .brand {
 }
 
 .nav-search form {
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.2);
-  color: white;
   position: relative;
   height: 100%;
   display: flex;
   width: 100%;
 }
 
-.nav-search input[type="text"] {
+.nav-search input {
   width: 100%;
   height: 100%;
   padding: 0 40px 0 12px;
