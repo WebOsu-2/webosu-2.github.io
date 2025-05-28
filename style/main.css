@@ -77,7 +77,6 @@ canvas {
   cursor: none !important;
 }
 
-/* FIXED & RESPONSIVE NAVBAR STYLING */
 nav {
   background: var(--nav-bg);
   color: var(--nav-color);
@@ -142,6 +141,9 @@ nav .brand {
 }
 
 .nav-search form {
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  color: white;
   position: relative;
   height: 100%;
   display: flex;
