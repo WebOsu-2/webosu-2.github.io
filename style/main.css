@@ -154,7 +154,7 @@ nav .brand {
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   font-size: 15px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgb(130, 11, 54);
   color: white;
   outline: none;
   transition: border-color 0.2s ease;
