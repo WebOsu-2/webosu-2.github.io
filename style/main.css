@@ -168,7 +168,7 @@ nav .brand {
   color: rgba(255, 255, 255, 0.6);
 }
 
-.nav-search input[type="image"] {;
+.nav-search input[type="image"] {
   position: absolute;
   right: 10px;
   top: 50%;
@@ -1314,7 +1314,6 @@ progress.finished::-webkit-progress-value {
 }
 
 input {
-  color: #fff;
   border: none;
 }
 
