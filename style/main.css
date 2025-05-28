@@ -1314,8 +1314,6 @@ progress.finished::-webkit-progress-value {
 }
 
 input {
-  background: #892e48;
-  border-radius: 2em;
   color: #fff;
   border: none;
 }
