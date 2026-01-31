@@ -325,7 +325,7 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
 
         this.requestStar = function() {
             let xhr = new XMLHttpRequest();
-            xhr.open("GET", "https://api.sayobot.cn/beatmapinfo?1=" + this.tracks[0].metadata.BeatmapSetID);
+            xhr.open("GET", getInfoUrl(this.tracks[0].metadata.BeatmapSetID));
             xhr.responseType = 'text';
             let self = this;
             xhr.onload = function() {

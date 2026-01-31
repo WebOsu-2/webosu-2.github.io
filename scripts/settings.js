@@ -49,6 +49,8 @@ function setOptionPanel() {
     nightcore: false,
     hidden: false,
     autoplay: false,
+    relax: false,
+    autopilot: false,
 
     hideNumbers: false,
     hideGreat: false,
@@ -88,6 +90,8 @@ function setOptionPanel() {
       window.game.nightcore = this.nightcore;
       window.game.hidden = this.hidden;
       window.game.autoplay = this.autoplay;
+      window.game.relax = this.relax;
+      window.game.autopilot = this.autopilot;
 
       window.game.hideNumbers = this.hideNumbers;
       window.game.hideGreat = this.hideGreat;
@@ -160,16 +164,79 @@ function setOptionPanel() {
       checkdefault(c2, item2);
     };
   }
+  function bindExclusiveCheck3(id1, item1, id2, item2, id3, item3) {
+    let c1 = document.getElementById(id1);
+    let c2 = document.getElementById(id2);
+    let c3 = document.getElementById(id3);
+    c1.checked = gamesettings[item1];
+    c2.checked = gamesettings[item2];
+    c3.checked = gamesettings[item3];
+    gamesettings.restoreCallbacks.push(function () {
+      c1.checked = gamesettings[item1];
+      c2.checked = gamesettings[item2];
+      c3.checked = gamesettings[item3];
+      checkdefault(c1, item1);
+      checkdefault(c2, item2);
+      checkdefault(c3, item3);
+    });
+    checkdefault(c1, item1);
+    checkdefault(c2, item2);
+    checkdefault(c3, item3);
+    c1.onclick = function () {
+      gamesettings[item1] = c1.checked;
+      gamesettings[item2] = false;
+      gamesettings[item3] = false;
+      // c1.checked = false;
+      c2.checked = false;
+      c3.checked = false;
+      saveToLocal();
+      checkdefault(c1, item1);
+      checkdefault(c2, item2);
+      checkdefault(c3, item3);
+    };
+    c2.onclick = function () {
+      gamesettings[item1] = false;
+      gamesettings[item2] = c2.checked;
+      gamesettings[item3] = false;
+      c1.checked = false;
+      // c2.checked = false;
+      c3.checked = false;
+      saveToLocal();
+      checkdefault(c1, item1);
+      checkdefault(c2, item2);
+      checkdefault(c3, item3);
+    };
+    c3.onclick = function () {
+      gamesettings[item1] = false;
+      gamesettings[item2] = false;
+      gamesettings[item3] = c3.checked;
+      c1.checked = false;
+      c2.checked = false;
+      // c3.checked = false;
+      gamesettings.loadToGame();
+      saveToLocal();
+      checkdefault(c1, item1);
+      checkdefault(c2, item2);
+      checkdefault(c3, item3);
+    };
+  }
+
 
   function bindrange(id, item, feedback) {
     let range = document.getElementById(id);
     let indicator = document.getElementById(id + "-indicator");
-    range.onmousedown = function () {
+    range.addEventListener("mousedown", function () {
       indicator.removeAttribute("hidden");
-    };
-    range.onmouseup = function () {
+    });
+    range.addEventListener("mouseup",function () {
       indicator.setAttribute("hidden", "");
-    };
+    });
+    range.addEventListener("touchdown", function () {
+      indicator.removeAttribute("hidden");
+    });
+    range.addEventListener("touchend",function () {
+      indicator.setAttribute("hidden", "");
+    });
     range.oninput = function () {
       let min = parseFloat(range.min);
       let max = parseFloat(range.max);
@@ -280,8 +347,15 @@ function setOptionPanel() {
     "nightcore-check",
     "nightcore"
   );
+  bindExclusiveCheck3(
+    "relax-check",
+    "relax",
+    "autopilot-check",
+    "autopilot",
+    "autoplay-check",
+    "autoplay"
+  )
   bindcheck("hidden-check", "hidden");
-  bindcheck("autoplay-check", "autoplay");
 
   // skin
   bindcheck("hidenumbers-check", "hideNumbers");

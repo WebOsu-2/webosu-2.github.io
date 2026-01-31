@@ -20,7 +20,7 @@ function startpreview(box) {
     const audio = document.createElement("audio");
     const source = document.createElement("source");
     console.log("pazinga");
-    source.src = `https://cdn.sayobot.cn:25225/preview/${box.sid}.mp3`;
+    source.src = getPreviewUrl(box.sid);
     source.type = "audio/mpeg";
     audio.appendChild(source);
 
@@ -59,14 +59,15 @@ function startpreview(box) {
             }
         }, 10);
     };
+    return audio
 }
 function startdownload(box) {
-    startpreview(box);
+    let currentAudio = startpreview(box);
     if (box.downloading) {
         return;
     }
 
-    const url = `https://txy1.sayobot.cn/beatmaps/download/mini/${box.sid}`;
+    const url = getDownloadUrl(box.sid);
     box.downloading = true;
     box.classList.add("downloading");
 
@@ -131,9 +132,10 @@ function startdownload(box) {
             box.oszblob = blob;
             bar.className = "finished";
             box.classList.remove("downloading");
+            currentAudio.softstop();
         })
         .catch(error => {
-            console.error("Download failed:", error);
+            console.error("Download failed:", error.message);
             alert("Beatmap download failed. Please retry later.");
             box.downloading = false;
             box.classList.remove("downloading");

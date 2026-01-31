@@ -210,7 +210,7 @@ var NSaddBeatmapList = {
         pBeatmapArtist.innerText = map.artist;
         pBeatmapCreator.innerText = "mapped by " + map.creator;
         pBeatmapCover.alt = "cover" + map.sid;
-        pBeatmapCover.src = "https://cdn.sayobot.cn:25225/beatmaps/" + map.sid + "/covers/cover.webp";
+        pBeatmapCover.src = getCoverUrl(map.sid);
         pBeatmapCover.loading = "lazy";
         pBeatmapCover.width = 130;
         pBeatmapCover.height = 130;
@@ -291,7 +291,7 @@ var NSaddBeatmapList = {
 
     // async
     requestMoreInfo: async function (box) {
-        const url = "https://api.sayobot.cn/beatmapinfo?1=" + box.sid;
+        const url = getInfoUrl(box.sid);
 
         try {
             const response = await fetch(url);
@@ -349,7 +349,7 @@ async function addBeatmapList(listurl, list, filter, maxsize) {
 
 function addBeatmapSid(sid, list) {
     if (!list) list = document.getElementById("beatmap-list");
-    const url = "https://api.sayobot.cn/v2/beatmapinfo?0=" + sid;
+    const url = getInfoUrlV2(sid);
 
     fetch(url)
         .then(response => response.json())
