@@ -1,1 +1,1 @@
-define([],(function(){function n(n){this.hitObject=n}return n.lerp=function(n,t,e){return n*(1-e)+t*e},n}));
+define([],function(){function n(n){this.hitObject=n}return n.lerp=function(n,t,e){return n*(1-e)+t*e},n});
