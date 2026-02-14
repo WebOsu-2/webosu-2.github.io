@@ -40,8 +40,7 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
             self.relax = game.relax;
             self.modhidden = game.hidden;
             self.playbackRate = 1.0;
-            //if (self.game.nightcore) self.playbackRate *= 1.5;
-            if (self.game.nightcore) self.playbackRate *= 3; // DBG
+            if (self.game.nightcore) self.playbackRate *= 1.5;
             if (self.game.daycore) self.playbackRate *= 0.75;
             self.hideNumbers = game.hideNumbers;
             self.hideGreat = game.hideGreat;
