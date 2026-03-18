@@ -490,8 +490,12 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 } else if (index <= 99) {
                     hit.numbers.push(newHitSprite("score-" + (index % 10) + ".png", basedep, 0.35, 0, 0.47));
                     hit.numbers.push(newHitSprite("score-" + ((index - (index % 10)) / 10) + ".png", basedep, 0.35, 1, 0.47));
+		} else if (index <= 999) {
+                    hit.numbers.push(newHitSprite("score-" + (index % 10) + ".png", basedep, 0.3, -0.5, 0.47));
+	            hit.numbers.push(newHitSprite("score-" + (((index % 100) - (index % 10)) / 10) + ".png", basedep, 0.3, 0.5, 0.47));
+	            hit.numbers.push(newHitSprite("score-" + ((index - (index % 100)) / 100) + ".png", basedep, 0.3, 1.5, 0.47));
                 }
-                // Note: combos > 99 hits are unsupported
+                // Note: combos > 999 hits are unsupported
             }
 
             this.createSlider = function (hit) {
