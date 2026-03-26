@@ -21,7 +21,7 @@ game in action:
 
 ## Todo list
 
-- [ x ] Update from outdated PixiJS v6 to v7
+- [x] Update from outdated PixiJS v6 to v7
 - [ ] Update from outdated PixiJS v7 to v8
 - [ ] uploadable skins
 - [ ] ability to switch between beatmap providers
