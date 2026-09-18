@@ -34,6 +34,17 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
             if (!self.hits.length) {
                 throw new Error("This difficulty has no playable hit objects.");
             }
+            // DT/NC: the audio runs at playbackRate, so compress/expand all
+            // chart times onto that clock. Untouched at rate 1 (same refs).
+            self.timeRate = self.playbackRate;
+            if (self.timeRate !== 1 && Osu && typeof Osu.scaleChartForRate === "function") {
+                const scaled = Osu.scaleChartForRate(self.track.hitObjects, self.track.timingPoints, self.timeRate);
+                self.hits = scaled.hits;
+                // hitsound/tick code walks track.timingPoints: point it at
+                // the scaled clone (shallow copy; the decoded track keeps
+                // unscaled times so retries never double-scale).
+                self.track = Object.assign({}, self.track, { timingPoints: scaled.timingPoints });
+            }
             self.offset = 0;
             self.currentHitIndex = 0; // index for all hit objects
             self.ended = false;
@@ -883,8 +894,9 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
 
             // hit object updating
             var futuremost = 0, current = 0;
-            if (self.track.hitObjects.length > 0) {
-                futuremost = self.track.hitObjects[0].time;
+            if (self.hits.length > 0) {
+                // scaled copy (matches the audio clock under DT/NC)
+                futuremost = self.hits[0].time;
             }
             var waitinghitid = 0; // the first object that's not ended
             this.updateUpcoming = function (time) {

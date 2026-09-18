@@ -404,7 +404,43 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
         }
     }
 
+    // exposed for Playback rate mods + unit tests
+    Osu.scaleChartForRate = scaleChartForRate;
+
     return Osu;
+
+    // DT/NC support: compress (rate>1) or expand (rate<1) chart times onto
+    // the rate-adjusted audio clock. Returns fresh { hits, timingPoints };
+    // inputs are never mutated so retries (which reuse the decoded track)
+    // stay idempotent. Judgement/approach windows are intentionally NOT
+    // scaled: like stable osu!, OD/AR ms-windows are rate-independent.
+    function scaleChartForRate(hitObjects, timingPoints, rate) {
+        const tp = (timingPoints || []).map(function (p) {
+            const base = (p.trueMillisecondsPerBeat !== undefined) ? p.trueMillisecondsPerBeat : p.millisecondsPerBeat;
+            return Object.assign({}, p, {
+                offset: p.offset / rate,
+                millisecondsPerBeat: p.millisecondsPerBeat / rate,
+                trueMillisecondsPerBeat: base / rate,
+            });
+        });
+        if (!tp.length) {
+            tp.push({ offset: 0, millisecondsPerBeat: 500 / rate, meter: 4, sampleSet: 0, sampleIndex: 0, volume: 100, uninherited: 1, kaiMode: 0, trueMillisecondsPerBeat: 500 / rate });
+        }
+        let ti = 0;
+        const hits = (hitObjects || []).map(function (o) {
+            const hit = Object.assign({}, o);
+            hit.time = o.time / rate;
+            hit.endTime = o.endTime / rate;
+            if (hit.type === "slider") {
+                hit.sliderTime = o.sliderTime / rate;
+                hit.sliderTimeTotal = o.sliderTimeTotal / rate;
+            }
+            while (ti + 1 < tp.length && tp[ti + 1].offset <= hit.time) ti++;
+            hit.timing = tp[Math.min(ti, tp.length - 1)];
+            return hit;
+        });
+        return { hits: hits, timingPoints: tp };
+    }
 
     function preallocateTiming(track) {
         let currentTimingIndex = 0;
