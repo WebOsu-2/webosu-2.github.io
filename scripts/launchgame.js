@@ -115,6 +115,7 @@ function launchOSU(osu, beatmapid, version) {
   var gameLoop;
   // set quit callback
   window.quitGame = function () {
+    if (!window.app) return; // already quit / never launched
     // Hard-stop any gameplay audio and preview <audio> elements so
     // quitting without reload never leaves sound playing/desynced.
     try {
@@ -177,7 +178,7 @@ function launchOSU(osu, beatmapid, version) {
     let audios = document.getElementsByTagName("audio");
     for (let i = 0; i < audios.length; ++i) audios[i].softstop();
   };
-  playback.load(); // load audio
+  if (playback.load() === false) return; // audio missing: already toasted + cleaned up
 
   // start main loop
   gameLoop = function (timestamp) {

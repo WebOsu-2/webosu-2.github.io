@@ -88,7 +88,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 self.start();
             }
             self.load = function () {
-                self.osu.load_mp3(self.track);
+                return self.osu.load_mp3(self.track) !== false;
             }
 
             var gfx = window.gfx = {}; // game field area

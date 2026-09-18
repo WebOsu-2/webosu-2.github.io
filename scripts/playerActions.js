@@ -1,6 +1,8 @@
 // Player input handling (ES module). Reads globals playback/game/gfx at event time.
   var checkClickdown = function checkClickdown() {
-    // Ignore clicks while paused or after game end (pause-menu exploit).
+    // Ignore clicks while paused or after game end (pause-menu exploit),
+    // and while audio is missing (broken load aborts before it exists).
+    if (!playback || !playback.osu || !playback.osu.audio) return;
     if (playback.game.paused || playback.ended) return;
     var upcoming = playback.upcomingHits;
     var click = {

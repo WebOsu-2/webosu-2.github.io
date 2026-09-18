@@ -423,6 +423,14 @@ import CircumscribedCircle from './curves/CircumscribedCircle.js';
                         if (c && c.name && c.name.toLowerCase() === want) { entry = c; break; }
                     }
                 }
+                if (!entry && this.zip && this.zip.children) {
+                    // basename fallback (subfolders, mirrors renaming paths)
+                    const base = want.split(/[\\/]/).pop();
+                    for (let i = 0; i < this.zip.children.length; ++i) {
+                        const c = this.zip.children[i];
+                        if (c && c.name && c.name.toLowerCase().split(/[\\/]/).pop() === base) { entry = c; break; }
+                    }
+                }
                 if (!entry) {
                     if (typeof cb === "function") cb(null);
                     return;
@@ -468,13 +476,55 @@ import CircumscribedCircle from './curves/CircumscribedCircle.js';
             });
         }
 
+        // Find the audio entry for a track, tolerating the naming drift
+        // seen in the wild (case, subfolders, re-encoded extensions).
+        // Returns the entry or null (never throws).
+        this.findAudioEntry = function (track) {
+            try {
+                track = track || self.tracks[0];
+                if (!track || !self.zip || !self.zip.children) return null;
+                const want = String(track.general.AudioFilename || "").toLowerCase();
+                if (!want) return null;
+                const base = want.split(/[\\/]/).pop();
+                const isAudio = (n) => /\.(mp3|ogg|oga|wav|flac|m4a|opus)$/.test(n);
+                return _.find(self.zip.children, (c) => c.name.toLowerCase() === want)
+                    || _.find(self.zip.children, (c) => c.name.toLowerCase().split(/[\\/]/).pop() === base)
+                    || _.find(self.zip.children, (c) => isAudio(c.name.toLowerCase()))
+                    || null;
+            } catch (e) {
+                console.error("findAudioEntry failed", e);
+                return null;
+            }
+        };
+
         this.load_mp3 = function load_mp3(track) {
             track = track || self.tracks[0];
-            var mp3_raw = _.find(self.zip.children, function(c) { return c.name.toLowerCase() === track.general.AudioFilename.toLowerCase(); });
+            const audioFailed = (why) => {
+                console.error("audio load failed:", why);
+                if (typeof showErrorToast === "function") {
+                    showErrorToast("This download has no playable audio (" + why + "). Try re-downloading the map.");
+                }
+                // abort cleanly instead of a frozen black game view with
+                // cascading input errors (osu.audio stays undefined there)
+                try { if (window.quitGame) window.quitGame(); } catch (e) { /* ignore */ }
+            };
+            var mp3_raw = self.findAudioEntry(track);
+            if (!mp3_raw) {
+                audioFailed(track.general.AudioFilename || "missing filename");
+                return false;
+            }
             mp3_raw.getBlob("audio/mpeg", function(blob) {
+                if (!blob) {
+                    audioFailed("unreadable audio blob");
+                    return;
+                }
                 var reader = new FileReader();
                 reader.onload = function(e) {
                     var buffer = e.target.result;
+                    if (!buffer) {
+                        audioFailed("empty audio data");
+                        return;
+                    }
                     console.log("Loaded blob");
                     self.audio = new OsuAudio(mp3_raw.name.toLowerCase(), buffer, function() {
                         if (self.onready) {
@@ -482,8 +532,13 @@ import CircumscribedCircle from './curves/CircumscribedCircle.js';
                         }
                     });
                 };
-                reader.readAsArrayBuffer(blob);
+                try {
+                    reader.readAsArrayBuffer(blob);
+                } catch (e) {
+                    audioFailed("unreadable audio blob");
+                }
             });
+            return true;
         }
     }
 
