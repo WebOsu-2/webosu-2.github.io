@@ -36,6 +36,14 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             self.background = null;
             self.started = false;
             self.upcomingHits = [];
+            // audio rate FIRST: everything below (including DT/NC chart
+            // scaling) depends on it. Reading self.playbackRate before this
+            // assignment yields undefined, and scaling by undefined poisons
+            // every hit time with NaN on first launch (a stale value from a
+            // previous run is why retrying appeared to fix it).
+            self.playbackRate = 1.0;
+            if (self.game.nightcore) self.playbackRate *= 1.5;
+            if (self.game.daycore) self.playbackRate *= 0.75;
             // creating a copy of hitobjects
             self.hits = [];
             _.each(self.track.hitObjects, function (o) {
@@ -63,9 +71,6 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             self.autopilot = game.autopilot;
             self.relax = game.relax;
             self.modhidden = game.hidden;
-            self.playbackRate = 1.0;
-            if (self.game.nightcore) self.playbackRate *= 1.5;
-            if (self.game.daycore) self.playbackRate *= 0.75;
             self.hideNumbers = game.hideNumbers;
             self.hideGreat = game.hideGreat;
             self.hideFollowPoints = game.hideFollowPoints;

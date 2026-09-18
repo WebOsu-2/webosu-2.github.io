@@ -499,6 +499,9 @@ import CircumscribedCircle from './curves/CircumscribedCircle.js';
     // stay idempotent. Judgement/approach windows are intentionally NOT
     // scaled: like stable osu!, OD/AR ms-windows are rate-independent.
     function scaleChartForRate(hitObjects, timingPoints, rate) {
+        // Fail-safe: a bogus rate must never poison the chart (dividing by
+        // undefined/NaN once NaN'd every hit time on first launch).
+        if (!Number.isFinite(rate) || rate <= 0) rate = 1;
         const tp = (timingPoints || []).map(function (p) {
             const base = (p.trueMillisecondsPerBeat !== undefined) ? p.trueMillisecondsPerBeat : p.millisecondsPerBeat;
             return Object.assign({}, p, {

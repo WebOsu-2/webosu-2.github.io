@@ -169,25 +169,47 @@ function makePixiStub() {
     dispose() {}
   }
   class Container {
-    constructor() { this.children = []; }
+    constructor() {
+      this.children = []; this.visible = true; this.alpha = 1;
+      this.x = 0; this.y = 0;
+      this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
+      this.position = { x: 0, y: 0, set(x, y) { this.x = x; this.y = y; } };
+    }
     addChild(c) { this.children.push(c); return c; }
+    addChildAt(c, i) { this.children.splice(i, 0, c); return c; }
     removeChild(c) { const i = this.children.indexOf(c); if (i !== -1) this.children.splice(i, 1); return c; }
-    destroy() {}
+    destroy() { this.children = []; }
   }
   class Sprite extends Container {
-    constructor() { super(); this.anchor = { set() {} }; this.scale = { set() {}, x: 1, y: 1 }; }
+    constructor() {
+      super();
+      this.anchor = { x: 0.5, y: 0.5, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
+      this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
+      this.rotation = 0;
+      this.tint = 0xffffff;
+    }
+    bringToFront() {}
   }
   class BitmapText extends Container {
-    constructor() { super(); this.anchor = { set() {} }; this.text = ""; }
+    constructor() {
+      super();
+      this.anchor = { x: 0.5, y: 0.5, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
+      this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
+      this.text = "";
+      this.tint = 0xffffff;
+    }
   }
   return {
     Geometry, Container, Sprite, BitmapText,
-    Texture: { fromBuffer: () => ({}) },
+    Texture: { from: () => ({ width: 4, height: 4, baseTexture: { valid: true } }), fromBuffer: () => ({}) },
+    Assets: { load: async () => ({ width: 1280, height: 720, baseTexture: { valid: true } }) },
+    filters: {},
     Shader: { from: () => ({}) },
     State: { for2d: () => ({}) },
     settings: {},
     DRAW_MODES: { TRIANGLES: 4 },
     BLEND_MODES: { NORMAL: 0, ADD: 1 },
+    utils: { isWebGLSupported: () => true },
   };
 }
 
