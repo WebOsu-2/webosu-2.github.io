@@ -363,7 +363,11 @@ import CircumscribedCircle from './curves/CircumscribedCircle.js';
                 _.each(self.raw_tracks, function (t) {
                     console.log("attemping loading track:", t.name)
                     t.getText(function (text) {
-                        var track = new Track(this.zip, text);
+                        // NOTE: use self.zip, not this.zip: zip-fs invokes
+                        // this callback unbound, and under ES-module strict
+                        // mode `this` stays undefined (sloppy mode used to
+                        // coerce it to window, hiding the bug).
+                        var track = new Track(self.zip, text);
                         self.tracks.push(track);
                         track.ondecoded = self.track_decoded;
                         track.decode();

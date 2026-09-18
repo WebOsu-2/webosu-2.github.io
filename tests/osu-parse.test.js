@@ -93,6 +93,28 @@ test("osu-parse: missing PreviewTime/Mode get safe defaults", () => {
   H.eq(t.general.StackLeniency, 0.7, "leniency intact");
 });
 
+test("osu-parse: Osu.load survives unbound zip callbacks (strict this)", () => {
+  // Regression: the getText callback used `this.zip`, which sloppy mode
+  // coerced to window.zip. Under ESM strict mode `this` stays undefined
+  // and opening any map threw "Cannot read properties of undefined
+  // (reading 'zip')". zip-fs invokes callbacks unbound.
+  const Osu = exposed.default;
+  const zip = {
+    children: [
+      {
+        name: "map.osu",
+        getText(cb) { cb.call(undefined, MAP_BASIC); },
+      },
+    ],
+  };
+  const osu = new Osu(zip);
+  let launched = null;
+  osu.ondecoded = () => { launched = osu.tracks; };
+  osu.load();
+  H.eq(launched && launched.length, 1, "one track decoded");
+  H.eq(launched[0].hitObjects.length, 3, "all objects parsed");
+});
+
 const MAP_VIDEO = MAP_BASIC.replace("[HitObjects]", `[Events]
 Video,0,"bg.avi"
 0,0,"bg.jpg",0,0
