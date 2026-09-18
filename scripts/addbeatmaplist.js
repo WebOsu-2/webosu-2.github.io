@@ -184,11 +184,26 @@ function createDifficultyList(boxclicked, event) {
         difficultyItem.setAttribute("role", "button");
         difficultyItem.setAttribute("aria-label", "Play " + boxclicked.data[i].version);
         difficultyItem.activate = function () {
-            // check if ready
-            if (!window.scriptReady || !window.soundReady || !window.skinReady || !this.parentElement.parentElement.oszblob) {
+            // need game assets ready
+            if (!window.scriptReady || !window.soundReady || !window.skinReady) {
                 return;
             }
-            launchGame(this.parentElement.parentElement.oszblob, this.data.bid, this.data.version);
+            var box = this.parentElement.parentElement;
+            var bid = this.data.bid;
+            var version = this.data.version;
+            // lazy: fetch full .osz only when a difficulty is picked
+            if (!box.oszblob) {
+                var self = this;
+                if (!box.downloading) {
+                    try { self.classList.add("downloading"); } catch (e) {}
+                }
+                startdownload(box, function () {
+                    try { self.classList.remove("downloading"); } catch (e) {}
+                    self.activate();
+                });
+                return;
+            }
+            launchGame(box.oszblob, bid, version);
         };
         difficultyItem.onclick = function (e) {
             this.activate();
@@ -477,10 +492,11 @@ async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
             }
             // bind after info arrives (difficulty menu needs box.data);
             // IIFE avoids the classic loop-closure bug.
+            // Click = preview audio only. Full .osz downloads on difficulty pick.
             b.onclick = (function (bb) {
                 return function (e) {
                     createDifficultyList(bb, e);
-                    startdownload(bb);
+                    try { startpreview(bb); } catch (err) { console.error(err); }
                 };
             })(b);
         }
@@ -594,9 +610,9 @@ function addBeatmapSid(sid, list) {
             box.sid = res.data.sid;
             NSaddBeatmapList.requestMoreInfo(box);
             box.onclick = function (e) {
-                // this is effective only when box.data is available
+                // Click = preview audio only. Full .osz downloads on difficulty pick.
                 createDifficultyList(box, e);
-                startdownload(box);
+                try { startpreview(box); } catch (err) { console.error(err); }
             };
             if (window.beatmaplistLoadedCallback) {
                 window.beatmaplistLoadedCallback();

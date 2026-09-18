@@ -1010,21 +1010,32 @@ h3 {
   left: 0px;
   top: 48px;
   background: rgba(0, 0, 0, 0.5);
-  padding: 12px;
-  padding-right: 12px;
-  width: 152px;
+  padding: 12px 16px;
+  width: 260px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
   text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.7);
 }
 
 .download-progress {
-  line-height: 1.8em;
+  line-height: 1.4em;
+  width: 100%;
+  margin-bottom: 6px;
 }
 
 .download-progress .title {
-  margin-bottom: -1em;
+  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
+  line-height: 1.4em;
+}
+
+.download-progress progress {
+  width: 100%;
+  display: block;
+  margin: 0;
 }
 
 progress {
