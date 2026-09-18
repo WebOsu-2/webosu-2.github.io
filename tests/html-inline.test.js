@@ -8,7 +8,9 @@ const { execFileSync } = require("child_process");
 
 const PAGES = [
   "index.html", "favourites.html", "search.html", "latest.html",
-  "popular.html", "genres.html", "history.html", "settings.html",
+  "popular.html", "genres.html", "history.html",
+  // settings.html intentionally absent: it carries no inline scripts
+  // (all logic lives in scripts/settings.js).
 ];
 
 function inlineScripts(html) {
