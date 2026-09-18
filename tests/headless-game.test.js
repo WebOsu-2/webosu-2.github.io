@@ -40,14 +40,13 @@ global.FileReader = class {
     setTimeout(() => this.onload && this.onload({ target: this }), 0);
   }
 };
-global.URL = global.URL || {};
-global.URL.createObjectURL = global.URL.createObjectURL || (() => "blob:stub");
-global.URL.revokeObjectURL = global.URL.revokeObjectURL || (() => {});
+global.URL.createObjectURL = () => "blob:stub";
+global.URL.revokeObjectURL = () => {};
 global.Skin = new Proxy({}, { get: () => ({}) });
 global.game = null; // set per test (playerActions reads bare `game` too)
 
 function snd() { return { volume: 1, play() {} }; }
-function makeGame() {
+function makeGame(over) {
   const game = {
     window: global.window, stage: new global.PIXI.Container(), scene: null,
     updatePlayerActions() {},
@@ -70,11 +69,12 @@ function makeGame() {
     },
     sampleSet: 1, sampleComboBreak: snd(),
   };
+  Object.assign(game, over || {});
   global.game = game;
   return game;
 }
 
-function stubZip() {
+function stubZip(extra) {
   const files = fs.readdirSync(FIXDIR);
   const children = files.map((name) => ({
     name,
@@ -84,6 +84,7 @@ function stubZip() {
       cb({ _buf: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), type: mime });
     },
   }));
+  if (extra) children.push(extra);
   return {
     children,
     getChildByName(name) {
@@ -141,4 +142,49 @@ test("headless: real map boots, clock finite, objects stream", async () => {
     H.assert(s.indexOf("NaN") === -1, "timer text clean, got " + s);
   }
   pb.destroy();
+});
+
+test("headless: enabled video layer appears above nothing and unhides", async () => {
+  // window.app stand-in: the video reveal must flip the canvas transparent
+  // (an opaque clear color would paint over the DOM video forever).
+  global.window.app = { view: { style: {} }, renderer: { background: { color: 0x111111, alpha: 1 } } };
+  try {
+    const game = makeGame({ backgroundVideo: true });
+    const mp4bytes = fs.readFileSync(path.join(FIXDIR, "audio.mp3"));
+    const osu = new Osu(stubZip({
+      name: "bg.mp4",
+      getText(cb) { cb(""); },
+      getBlob(mime, cb) { cb({ _buf: mp4bytes.buffer.slice(mp4bytes.byteOffset, mp4bytes.byteOffset + mp4bytes.byteLength), type: mime }); },
+    }));
+    await new Promise((resolve, reject) => {
+      osu.ondecoded = () => resolve();
+      osu.onerror = (e) => reject(new Error("osu error: " + e));
+      osu.load();
+      setTimeout(() => reject(new Error("decode timeout")), 5000);
+    });
+    osu.filterTracks();
+    const track = osu.tracks.find((t) => (t.metadata.Version || "").includes("Normal")) || osu.tracks[0];
+    track.video = { filename: "bg.mp4", offset: 0 };
+    const pb = new Playback(game, osu, track);
+    H.assert(pb.bgVideo && pb.bgVideo.el, "video layer created");
+    H.eq(global.window.app.renderer.background.alpha, 0, "canvas transparent");
+    const area = document.getElementById("game-area");
+    const vids = area.children.filter((c) => c.className === "bg-video");
+    H.eq(vids.length, 1, "exactly one video element");
+    await new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error("audio decode timeout")), 5000);
+      const prev = osu.onready;
+      osu.onready = () => { clearTimeout(to); if (prev) prev(); resolve(); };
+      pb.load();
+    });
+    pb.start();
+    for (let f = 0; f < 30; f++) {
+      ctx.currentTime += 0.016;
+      pb.render(performance.now());
+    }
+    H.eq(pb.background.visible, false, "cover hidden while video live");
+    pb.destroy();
+  } finally {
+    delete global.window.app;
+  }
 });
