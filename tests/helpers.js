@@ -63,6 +63,7 @@ function makeElement(tag = "div") {
   const el = {
     tagName: (tag || "div").toUpperCase(),
     children: [],
+    clientWidth: 200,
     style: {},
     dataset: {},
     _attrs: {},
@@ -76,9 +77,17 @@ function makeElement(tag = "div") {
     setAttribute(k, v) { this._attrs[k] = String(v); },
     getAttribute(k) { return Object.prototype.hasOwnProperty.call(this._attrs, k) ? this._attrs[k] : null; },
     removeAttribute(k) { delete this._attrs[k]; },
-    appendChild(c) { this.children.push(c); return c; },
+    appendChild(c) {
+      this.children.push(c);
+      if (this.tagName === "SELECT" && c && Object.prototype.hasOwnProperty.call(c, "value")) {
+        this.options.push(c);
+      }
+      return c;
+    },
     removeChild(c) { const i = this.children.indexOf(c); if (i !== -1) this.children.splice(i, 1); return c; },
     remove() { this._removed = true; },
+    get firstChild() { return this.children.length ? this.children[0] : null; },
+    closest() { return null; },
     addEventListener() {},
     removeEventListener() {},
     focus() {},
@@ -94,6 +103,8 @@ function makeElement(tag = "div") {
     pause() {}, play() { return Promise.resolve(); },
     // input-ish
     value: "", checked: false,
+    // select-ish
+    options: [],
     // img-ish
     src: "", alt: "", loading: "", width: 0, height: 0,
     onclick: null, onkeydown: null, oninput: null, onchange: null,

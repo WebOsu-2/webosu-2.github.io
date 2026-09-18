@@ -89,6 +89,10 @@ function setOptionPanel() {
       window.game.beatmapHitsound = this.beatmapHitsound;
       window.game.globalOffset = parseFloat(this.audiooffset);
 
+      window.game.apiBrowsing = this.apiBrowsing;
+      window.game.apiDownload = this.apiDownload;
+      window.game.backgroundVideo = !!this.backgroundVideo;
+
       window.game.easy = this.easy;
       window.game.daycore = this.daycore;
       window.game.hardrock = this.hardrock;
@@ -110,15 +114,23 @@ function setOptionPanel() {
   // functions that get called when settings are restored to default
   // used for refreshing widgets on the page
   gamesettings.restoreCallbacks = [];
+  function settingRow(element) {
+    if (!element) return null;
+    // .setting is the redesigned row; fall back to the legacy table cell
+    // chain for any markup that still uses it.
+    if (element.closest) {
+      const row = element.closest(".setting");
+      if (row) return row;
+    }
+    return element.parentElement && element.parentElement.parentElement && element.parentElement.parentElement.parentElement;
+  }
   function checkdefault(element, item) {
+    const row = settingRow(element);
+    if (!row || !row.classList) return;
     if (gamesettings[item] == defaultsettings[item])
-      element.parentElement.parentElement.parentElement.classList.remove(
-        "non-default"
-      );
+      row.classList.remove("non-default");
     else
-      element.parentElement.parentElement.parentElement.classList.add(
-        "non-default"
-      );
+      row.classList.add("non-default");
   }
   // FIXME: checkdefault: 1 to 1 bind
   function bindcheck(id, item) {
@@ -231,18 +243,20 @@ function setOptionPanel() {
 
   function bindrange(id, item, feedback) {
     let range = document.getElementById(id);
+    if (!range) return;
     let indicator = document.getElementById(id + "-indicator");
+    let chip = document.getElementById(id + "-value");
     range.addEventListener("mousedown", function () {
-      indicator.removeAttribute("hidden");
+      if (indicator) indicator.removeAttribute("hidden");
     });
     range.addEventListener("mouseup",function () {
-      indicator.setAttribute("hidden", "");
+      if (indicator) indicator.setAttribute("hidden", "");
     });
     range.addEventListener("touchstart", function () {
-      indicator.removeAttribute("hidden");
+      if (indicator) indicator.removeAttribute("hidden");
     });
     range.addEventListener("touchend",function () {
-      indicator.setAttribute("hidden", "");
+      if (indicator) indicator.setAttribute("hidden", "");
     });
     range.oninput = function () {
       let min = parseFloat(range.min);
@@ -250,14 +264,18 @@ function setOptionPanel() {
       let val = parseFloat(range.value);
       let pos = (val - min) / (max - min);
       let length = range.clientWidth - 20;
-      indicator.style.left = pos * length + 13 + "px";
-      indicator.innerText = feedback(val);
+      if (indicator) {
+        indicator.style.left = pos * length + 13 + "px";
+        indicator.innerText = feedback(val);
+      }
+      if (chip) chip.innerText = feedback(val);
       gamesettings[item] = range.value;
       checkdefault(range, item);
     };
     range.value = gamesettings[item];
     gamesettings.restoreCallbacks.push(function () {
       range.value = gamesettings[item];
+      range.oninput();
       checkdefault(range, item);
     });
     range.oninput();
@@ -266,6 +284,47 @@ function setOptionPanel() {
       gamesettings.loadToGame();
       saveToLocal();
       checkdefault(range, item);
+    };
+  }
+
+  function bindselect(id, item, options) {
+    // options: [{ value, label }] or null to build from API_PROVIDERS.
+    let sel = document.getElementById(id);
+    if (!sel) return;
+    function isAllowed(p) {
+      if (id === "apibrowsing-select") return p.browse;
+      return true; // download select offers every provider
+    }
+    let opts = options;
+    if (!opts && typeof API_PROVIDERS !== "undefined") {
+      opts = Object.keys(API_PROVIDERS)
+        .filter(function (k) { return isAllowed(API_PROVIDERS[k]); })
+        .map(function (k) { return { value: k, label: API_PROVIDERS[k].name }; });
+    }
+    if (opts) {
+      // rebuild to stay in sync with the registry
+      while (sel.firstChild) sel.removeChild(sel.firstChild);
+      opts.forEach(function (o) {
+        let el = document.createElement("option");
+        el.value = o.value;
+        el.innerText = o.label;
+        sel.appendChild(el);
+      });
+    }
+    // sanitize stored value (e.g. nerinyan kept for downloads, never browse)
+    let allowed = Array.prototype.map.call(sel.options, function (o) { return o.value; });
+    if (allowed.indexOf(gamesettings[item]) === -1) gamesettings[item] = defaultsettings[item];
+    sel.value = gamesettings[item];
+    gamesettings.restoreCallbacks.push(function () {
+      sel.value = gamesettings[item];
+      checkdefault(sel, item);
+    });
+    checkdefault(sel, item);
+    sel.onchange = function () {
+      gamesettings[item] = sel.value;
+      gamesettings.loadToGame();
+      saveToLocal();
+      checkdefault(sel, item);
     };
   }
 
@@ -345,6 +404,11 @@ function setOptionPanel() {
     return Math.round(Number(v)) + "ms";
   });
   bindcheck("beatmap-hitsound-check", "beatmapHitsound");
+
+  // beatmap sources
+  bindselect("apibrowsing-select", "apiBrowsing");
+  bindselect("apidownload-select", "apiDownload");
+  bindcheck("backgroundvideo-check", "backgroundVideo");
 
   // mods
   bindExclusiveCheck("easy-check", "easy", "hardrock-check", "hardrock");
