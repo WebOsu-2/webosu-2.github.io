@@ -450,9 +450,15 @@ async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
         res.data = res.data.slice(0, maxsize);
     }
 
-    // add widget to webpage as soon as list is fetched
+    // add widget to webpage as soon as list is fetched.
+    // One malformed entry must not kill the whole page (per-box guard).
+    const items = [];
     for (let i = 0; i < res.data.length; ++i) {
-        box.push(NSaddBeatmapList.addpreviewbox(res.data[i], list));
+        try {
+            items.push({ data: res.data[i], box: NSaddBeatmapList.addpreviewbox(res.data[i], list) });
+        } catch (e) {
+            console.error("Skipping malformed beatmap entry:", e);
+        }
     }
 
     // fetch extra info concurrently with a small pool.
@@ -460,10 +466,10 @@ async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
     let next = 0;
     const CONCURRENCY = 5;
     async function worker() {
-        while (next < res.data.length) {
-            const i = next++;
-            const b = box[i];
-            b.sid = res.data[i].sid;
+        while (next < items.length) {
+            const idx = next++;
+            const b = items[idx].box;
+            b.sid = items[idx].data.sid;
             try {
                 await NSaddBeatmapList.requestMoreInfo(b);
             } catch (e) {
@@ -480,7 +486,7 @@ async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
         }
     }
     const workers = [];
-    for (let w = 0; w < Math.min(CONCURRENCY, res.data.length); ++w) workers.push(worker());
+    for (let w = 0; w < Math.min(CONCURRENCY, items.length); ++w) workers.push(worker());
     await Promise.all(workers);
 
     if (window.beatmaplistLoadedCallback) {
@@ -488,7 +494,7 @@ async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
         window.beatmaplistLoadedCallback = null;
         // to make sure it's called only once
     }
-    return box.length;
+    return items.length;
 }
 
 // ---- Shared paginated list helper ----
