@@ -6,8 +6,9 @@
 const H = require("./helpers");
 
 global.PIXI = H.makePixiStub();
-const SliderMesh = H.loadAmd("scripts/SliderMesh.js", {});
-const LinearBezier = H.loadAmd("scripts/curves/LinearBezier.js", {});
+global._ = global._ || require("../scripts/lib/underscore.js");
+const SliderMesh = H.loadModule("scripts/SliderMesh.js").default;
+const LinearBezier = H.loadModule("scripts/curves/LinearBezier.js").default;
 
 function meshFromPoints(pts, pixelLength) {
   const hit = { x: pts[0].x, y: pts[0].y, keyframes: pts.slice(1), pixelLength: pixelLength || 200 };

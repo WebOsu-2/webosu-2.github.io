@@ -1,5 +1,5 @@
 #!/bin/bash
-dir="osuweb-""$(cat .version)"
+dir="osuweb-""$(git rev-parse --short HEAD)"
 mkdir "$dir"
 cp *.js *.html *.png *.svg *.json *.md LICENSE "$dir"
 cp -r style scripts skin fonts "$dir"

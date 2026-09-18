@@ -24,39 +24,15 @@ function finiteArray(arr, msg) {
   }
 }
 
-// ---------- AMD loader ----------
-// Repo scripts use RequireJS-style define(deps, factory). This executes the
-// file with a capturing `define` and resolves known deps. Pass { patch } as
-// {find, replace} to tweak test-only copies (source on disk is untouched).
-const amdCache = new Map();
-function loadAmd(relPath, depMap = {}, patch = null) {
-  const key = relPath + JSON.stringify(Object.keys(depMap).sort()) + "|" + (patch ? patch.find : "");
-  if (amdCache.has(key)) return amdCache.get(key);
-  let src = fs.readFileSync(path.join(ROOT, relPath), "utf8");
-  if (patch) {
-    if (!src.includes(patch.find)) throw new Error(`patch target missing in ${relPath}`);
-    src = src.replace(patch.find, patch.replace);
-  }
-  let captured = null;
-  const define = (...args) => {
-    // define(factory) or define(deps, factory)
-    if (args.length === 1) captured = { deps: [], factory: args[0] };
-    else captured = { deps: args[0], factory: args[1] };
-  };
-  define.amd = {};
-  new Function("define", src)(define);
-  if (!captured) throw new Error(`no define() call in ${relPath}`);
-  const resolved = captured.deps.map((d) => {
-    if (Object.prototype.hasOwnProperty.call(depMap, d)) return depMap[d];
-    if (d === "underscore") return require(path.join(ROOT, "scripts/lib/underscore.js"));
-    if (d.startsWith("curves/")) return loadAmd(`scripts/${d}.js`, depMap);
-    throw new Error(`unresolved AMD dep '${d}' in ${relPath}`);
-  });
-  const exported = captured.factory(...resolved);
-  amdCache.set(key, exported);
-  return exported;
+// ---------- module loader ----------
+// Game code is native ES modules (see scripts/*.js). require() loads them
+// synchronously (Node 22.12+; the repo's CI uses LTS). Globals the modules
+// read (_, PIXI, AudioContext, ...) must be installed BEFORE the first
+// require of each file; modules evaluate once per process.
+// Returns the module namespace; default exports via `.default`.
+function loadModule(relPath) {
+  return require(path.join(ROOT, relPath));
 }
-function clearAmdCache() { amdCache.clear(); }
 
 // ---------- DOM stub ----------
 function makeElement(tag = "div") {
@@ -192,9 +168,20 @@ function makePixiStub() {
     addIndex(idx) { this.index = Array.from(idx); return this; }
     dispose() {}
   }
-  class Container {}
+  class Container {
+    constructor() { this.children = []; }
+    addChild(c) { this.children.push(c); return c; }
+    removeChild(c) { const i = this.children.indexOf(c); if (i !== -1) this.children.splice(i, 1); return c; }
+    destroy() {}
+  }
+  class Sprite extends Container {
+    constructor() { super(); this.anchor = { set() {} }; this.scale = { set() {}, x: 1, y: 1 }; }
+  }
+  class BitmapText extends Container {
+    constructor() { super(); this.anchor = { set() {} }; this.text = ""; }
+  }
   return {
-    Geometry, Container,
+    Geometry, Container, Sprite, BitmapText,
     Texture: { fromBuffer: () => ({}) },
     Shader: { from: () => ({}) },
     State: { for2d: () => ({}) },
@@ -204,4 +191,4 @@ function makePixiStub() {
   };
 }
 
-module.exports = { assert, eq, deepEq, finiteArray, loadAmd, clearAmdCache, makeElement, createDom, installDom, makeAudioContextStub, makePixiStub, ROOT };
+module.exports = { assert, eq, deepEq, finiteArray, loadModule, makeElement, createDom, installDom, makeAudioContextStub, makePixiStub, ROOT };
