@@ -171,15 +171,20 @@ define([], function () {
             // direction is undefined and previously produced NaN arcs.
             if (Math.hypot(dx1, dy1) < 1e-6 || Math.hypot(dx2, dy2) < 1e-6) continue;
             let t = dx1 * dy2 - dx2 * dy1;
+            // NOTE: the joint's curve parameter MUST be passed as the fan's
+            // `t`. The vertex shader clips snake in/out per-fragment on
+            // position[2]; fan verts left at the default t=0 stay visible
+            // ahead of the snake head (and the tail cap pops in early),
+            // so the slider visibly falls apart while snaking.
             if (t > 0) {
                 // outer (right-side) round join
-                addArc(5 * i, 5 * i - 1, 5 * i + 2);
+                addArc(5 * i, 5 * i - 1, 5 * i + 2, curve[i].t);
                 // inner (left-side) bevel: without this, tight curves show
                 // a wedge-shaped gap ("corner cut off") on the inside.
                 index.push(5 * i, 5 * i + 1, 5 * i - 2);
             }
             else if (t < 0) {
-                addArc(5 * i, 5 * i + 1, 5 * i - 2);
+                addArc(5 * i, 5 * i + 1, 5 * i - 2, curve[i].t);
                 index.push(5 * i, 5 * i - 1, 5 * i + 2);
             }
             // t == 0: straight joint, quads already meet cleanly; adding a

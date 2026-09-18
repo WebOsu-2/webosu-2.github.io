@@ -44,6 +44,29 @@ test("slider-mesh: zero-length middle segment cannot produce NaN", () => {
   checkGeometry(m, "zero-seg");
 });
 
+test("slider-mesh: joint/end-cap fans carry joint t for snake clipping", () => {
+  // The vertex shader clips snake in/out per-fragment on position[2] (the
+  // curve parameter t): with snake-in at `endt`, fragments with t > endt
+  // are pushed beyond the far plane. So every vertex with t≈0 must sit
+  // within radius of the curve head (the head cap); anywhere else it pops
+  // in ahead of the snake and the slider visibly falls apart on curves.
+  // NOTE: line=true (L-type slider) keeps the 90° corner sharp, which is
+  // what grows multi-vertex joint fans; smoothed beziers barely turn per
+  // joint and would not exercise this path.
+  const H0 = { x: 0, y: 0 };
+  const curve = new LinearBezier({ x: H0.x, y: H0.y, keyframes: [{ x: 100, y: 0 }, { x: 100, y: 100 }], pixelLength: 200 }, true);
+  const m = new SliderMesh(curve, 50, 0);
+  const pos = m.geometry.attrs.position.data;
+  const R = 50;
+  for (let v = 0; v < pos.length / 4; v++) {
+    const t = pos[4 * v + 2];
+    if (Math.abs(t) < 1e-9) {
+      const d = Math.hypot(pos[4 * v] - H0.x, pos[4 * v + 1] - H0.y);
+      if (d > R + 1e-6) throw new Error(`vertex ${v} has t=0 but sits ${d.toFixed(1)}px from the head (snake glitch)`);
+    }
+  }
+});
+
 test("slider-mesh: sharp corner gets joint fill (no missing wedge)", () => {
   const straight = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   // bent path smooths to ~162px; size pixelLength to match so the test
