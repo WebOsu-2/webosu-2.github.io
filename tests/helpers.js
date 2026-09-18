@@ -55,17 +55,39 @@ function makeElement(tag = "div") {
     removeAttribute(k) { delete this._attrs[k]; },
     appendChild(c) {
       this.children.push(c);
+      if (c && typeof c === "object") {
+        try { c.parentNode = this; } catch (e) { /* ignore */ }
+      }
       if (this.tagName === "SELECT" && c && Object.prototype.hasOwnProperty.call(c, "value")) {
         this.options.push(c);
       }
       return c;
     },
-    removeChild(c) { const i = this.children.indexOf(c); if (i !== -1) this.children.splice(i, 1); return c; },
+    removeChild(c) {
+      const i = this.children.indexOf(c);
+      if (i !== -1) this.children.splice(i, 1);
+      if (c && typeof c === "object" && c.parentNode === this) {
+        try { c.parentNode = null; } catch (e) { /* ignore */ }
+      }
+      return c;
+    },
     remove() { this._removed = true; },
     get firstChild() { return this.children.length ? this.children[0] : null; },
     closest() { return null; },
-    addEventListener() {},
-    removeEventListener() {},
+    addEventListener(type, fn) {
+      this._listeners = this._listeners || {};
+      (this._listeners[type] = this._listeners[type] || []).push(fn);
+    },
+    removeEventListener(type, fn) {
+      if (!this._listeners || !this._listeners[type]) return;
+      this._listeners[type] = this._listeners[type].filter((f) => f !== fn);
+    },
+    dispatchEvent(type) {
+      const arg = { type, preventDefault() {}, stopPropagation() {} };
+      ((this._listeners && this._listeners[type]) || []).slice().forEach((f) => f(arg));
+      const handler = this["on" + type];
+      if (typeof handler === "function") handler(arg);
+    },
     focus() {},
     click() { if (typeof this.onclick === "function") this.onclick({}); },
     set innerText(v) { this._text = String(v); },
