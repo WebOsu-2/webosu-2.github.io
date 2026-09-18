@@ -10,6 +10,16 @@ define(["curves/Curve"], function(Curve) {
             this.endAngle = 0;
         }
         init(curves) {
+            if (!curves || !curves.length || !curves[0] || !curves[0].curve || !curves[0].curve.length) {
+                // Degenerate slider (e.g. all control points coincident):
+                // collapse to the head position instead of throwing, so one
+                // troll/corrupt slider can't make the whole map unloadable.
+                const hx = (this.hitObject && this.hitObject.x) || 0;
+                const hy = (this.hitObject && this.hitObject.y) || 0;
+                this.ncurve = 1;
+                this.curve = [{ x: hx, y: hy, t: 0 }, { x: hx, y: hy, t: 1 }];
+                return;
+            }
             this.ncurve = Math.floor(this.hitObject.pixelLength / CURVE_POINTS_SEPERATION) + 1;
             // number of segments, which have approximately same length
             this.curve = [];
@@ -55,7 +65,10 @@ define(["curves/Curve"], function(Curve) {
                 // this can always be done when lastCurve != thisCurve, since lastCurve is always available
                 // lastDistanceAt <= prefDistance <= distanceAt
                 if (lastCurve == thisCurve) {
-                    this.curve[i] = thisCurve;
+                    // copy (don't alias the raw point): raw Bezier points have
+                    // no `t`, and an undefined t becomes NaN in the slider
+                    // vertex buffer, breaking snake in/out clipping.
+                    this.curve[i] = { x: thisCurve.x, y: thisCurve.y, t: i / this.ncurve };
                 }
                 else {
                     const EPSILON = 0.001;

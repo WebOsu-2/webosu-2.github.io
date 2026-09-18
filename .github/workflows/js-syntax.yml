@@ -26,3 +26,6 @@ jobs:
             node --check "$f" || fail=1
           done
           exit $fail
+
+      - name: Run unit/regression suite (zero-dep node tests)
+        run: node tests/run.js
