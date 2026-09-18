@@ -22,12 +22,21 @@ jobs:
           npm install -g csso-cli
           npm install -g html-minifier
 
-      # Minify JS files (overwrite original files)
-      # --module: game code uses import/export (ES modules); without it
-      # terser fails to parse those files. Classic scripts are unaffected.
+      # Minify JS files (overwrite original files).
+      # Game code is mixed: native ES modules need --module, but classic
+      # scripts MUST NOT get it -- --module implies top-level tree-shaking,
+      # which deletes their cross-file globals (this once shipped empty
+      # launchgame.js/downloader.js and broke the whole live site).
+      # Rule: a file is ESM iff it has a top-level import/export statement.
       - name: Minify JavaScript
         run: |
-          find ./scripts -name "*.js" ! -name "*.min.js" -exec sh -c 'terser "{}" --module --compress --mangle -o "{}"' \;
+          find ./scripts -name "*.js" ! -name "*.min.js" | while read -r f; do
+            if grep -qE '^\s*(import|export)[ (]' "$f"; then
+              terser "$f" --module --compress --mangle -o "$f"
+            else
+              terser "$f" --compress --mangle -o "$f"
+            fi
+          done
 
       # Minify CSS files (overwrite original files)
       - name: Minify CSS
