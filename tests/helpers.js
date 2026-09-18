@@ -30,7 +30,7 @@ function finiteArray(arr, msg) {
 // {find, replace} to tweak test-only copies (source on disk is untouched).
 const amdCache = new Map();
 function loadAmd(relPath, depMap = {}, patch = null) {
-  const key = relPath + JSON.stringify(Object.keys(depMap).sort());
+  const key = relPath + JSON.stringify(Object.keys(depMap).sort()) + "|" + (patch ? patch.find : "");
   if (amdCache.has(key)) return amdCache.get(key);
   let src = fs.readFileSync(path.join(ROOT, relPath), "utf8");
   if (patch) {
