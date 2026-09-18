@@ -93,8 +93,7 @@ test("osu-parse: missing PreviewTime/Mode get safe defaults", () => {
   H.eq(t.general.StackLeniency, 0.7, "leniency intact");
 });
 
-test("osu-parse: Osu.load survives unbound zip callbacks (strict this)", () => {
-  // Regression: the getText callback used `this.zip`, which sloppy mode
+test("osu-parse: Osu.load survives unbound zip callbacks (strict this)", () => {  // Regression: the getText callback used `this.zip`, which sloppy mode
   // coerced to window.zip. Under ESM strict mode `this` stays undefined
   // and opening any map threw "Cannot read properties of undefined
   // (reading 'zip')". zip-fs invokes callbacks unbound.
@@ -155,4 +154,26 @@ test("video: getVideoFile finds entries case-insensitively", () => {
   let novid = "pending";
   osu.getVideoFile({}, (blob) => { novid = blob; });
   H.eq(novid, null, "no video info -> null");
+});
+
+test("osu-parse: findAudioEntry tolerates drift, load_mp3 aborts cleanly", () => {
+  const Osu = exposed.default;
+  const mkzip = (names) => ({
+    children: names.map((name) => ({ name, getBlob(m, cb) { cb({ type: m }); } })),
+  });
+  const track = (audio) => ({ general: { AudioFilename: audio } });
+  const osu = new Osu(mkzip(["Audio.MP3"]));
+  H.eq(osu.findAudioEntry(track("audio.mp3")).name, "Audio.MP3", "case-insensitive");
+  const osu2 = new Osu(mkzip(["songs/audio.mp3"]));
+  H.eq(osu2.findAudioEntry(track("audio.mp3")).name, "songs/audio.mp3", "subfolder basename");
+  const osu3 = new Osu(mkzip(["audio.ogg"]));
+  H.eq(osu3.findAudioEntry(track("audio.mp3")).name, "audio.ogg", "re-encoded fallback");
+  const osu4 = new Osu(mkzip(["bg.jpg"]));
+  H.eq(osu4.findAudioEntry(track("audio.mp3")), null, "no audio -> null");
+  global.showErrorToast = () => {};
+  global.window.quitGame = () => { global.window.__quitCalled = true; };
+  H.eq(osu4.load_mp3(track("audio.mp3")), false, "load_mp3 reports failure");
+  H.eq(global.window.__quitCalled, true, "aborts to list instead of black view");
+  delete global.showErrorToast;
+  delete global.window.__quitCalled;
 });
