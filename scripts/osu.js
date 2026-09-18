@@ -240,6 +240,23 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
                     [139,191,222]
                 ];
             }
+            // background video (first Video event, if any)
+            self.video = null;
+            for (let vi = 0; vi < self.events.length; ++vi) {
+                const ev = self.events[vi];
+                if (!ev || !ev.length) continue;
+                const etype = String(ev[0]).trim().toLowerCase();
+                if (etype === "video" || etype === "1") {
+                    let file = String(ev[2] || "").trim();
+                    if (file.length >= 2 && file[0] === '"' && file[file.length - 1] === '"') {
+                        file = file.slice(1, -1);
+                    }
+                    if (file) {
+                        self.video = { filename: file, offset: +(ev[1] || 0) || 0 };
+                    }
+                    break;
+                }
+            }
             if (this.difficulty.OverallDifficulty) {
                 this.difficulty.HPDrainRate = this.difficulty.HPDrainRate || this.difficulty.OverallDifficulty;
                 this.difficulty.CircleSize = this.difficulty.CircleSize || this.difficulty.OverallDifficulty;
@@ -352,6 +369,45 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
                 });
             } else {
                 img.src = "skin/defaultbg.jpg";
+            }
+        };
+
+        // Fetch a background video blob for a track with parsed video info.
+        // cb(blob|null): null when absent/unreadable. Lookup is
+        // case-insensitive (zips disagree with .osu casing all the time).
+        this.getVideoFile = function (track, cb) {
+            try {
+                if (!track || !track.video || !track.video.filename) {
+                    if (typeof cb === "function") cb(null);
+                    return;
+                }
+                const VIDEO_MIME = {
+                    ".mp4": "video/mp4", ".m4v": "video/x-m4v",
+                    ".mov": "video/quicktime", ".webm": "video/webm",
+                    ".ogv": "video/ogg", ".ogg": "video/ogg",
+                    ".avi": "video/x-msvideo", ".mkv": "video/x-matroska",
+                };
+                const want = track.video.filename.toLowerCase();
+                let entry = null;
+                try { entry = this.zip.getChildByName(track.video.filename); } catch (e) { entry = null; }
+                if (!entry && this.zip && this.zip.children) {
+                    for (let i = 0; i < this.zip.children.length; ++i) {
+                        const c = this.zip.children[i];
+                        if (c && c.name && c.name.toLowerCase() === want) { entry = c; break; }
+                    }
+                }
+                if (!entry) {
+                    if (typeof cb === "function") cb(null);
+                    return;
+                }
+                const dot = want.lastIndexOf(".");
+                const mime = (dot !== -1 && VIDEO_MIME[want.substr(dot)]) || "video/mp4";
+                entry.getBlob(mime, function (blob) {
+                    if (typeof cb === "function") cb(blob || null);
+                });
+            } catch (e) {
+                console.error("getVideoFile failed", e);
+                if (typeof cb === "function") cb(null);
             }
         };
 

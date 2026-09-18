@@ -248,6 +248,7 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 if (self.game.paused || self.ended) return;
                 if (this.osu.audio.pause()) { // pause music success
                     this.game.paused = true;
+                    self.stopVideoBG();
                     // Clear held inputs: holding Z/X or mouse through pause
                     // must not keep spinning / hitting while in pause menu.
                     // (Fixes "spin the spinner while in the menu" exploit.)
@@ -322,6 +323,7 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 this.osu.audio.play();
                 this.game.paused = false;
                 document.getElementById("pause-menu").setAttribute("hidden", "");
+                self.syncVideoBG(true);
             };
 
             // adjust volume
@@ -517,6 +519,102 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 }
             };
             self.createBackground();
+
+            // Optional background video (off by default; needs a download
+            // that includes the video file). Synced to the audio clock.
+            this.setupVideoBG = function () {
+                self.bgVideo = null;
+                self._videoTimer = null;
+                if (!self.game.backgroundVideo) return;
+                if (!self.track.video || !self.track.video.filename) return;
+                if (!self.osu || typeof self.osu.getVideoFile !== "function") return;
+                const my = self;
+                try {
+                    self.osu.getVideoFile(self.track, function (blob) {
+                        if (!blob) return;
+                        if (my.ended) return; // game already over/quitted
+                        try {
+                            const url = URL.createObjectURL(blob);
+                            const el = document.createElement("video");
+                            el.className = "bg-video";
+                            el.muted = true;
+                            el.playsInline = true;
+                            el.preload = "auto";
+                            // follow the background dim setting
+                            try {
+                                const dim = (self.game && self.game.backgroundDimRate) || 0;
+                                el.style.opacity = String(Math.max(0.1, 1 - dim));
+                            } catch (e) { /* ignore */ }
+                            el.src = url;
+                            const area = document.getElementById("game-area");
+                            if (area) area.appendChild(el);
+                            // keep the playfield canvas above the video
+                            try {
+                                if (window.app && window.app.view) {
+                                    window.app.view.style.position = "relative";
+                                    window.app.view.style.zIndex = "1";
+                                }
+                            } catch (e) { /* ignore */ }
+                            my.bgVideo = {
+                                el: el,
+                                url: url,
+                                // map ms -> audio clock (DT/NC scale the chart)
+                                offset: (self.track.video.offset || 0) / (self.timeRate || 1),
+                            };
+                            my.syncVideoBG(true);
+                        } catch (e) { console.error("video setup failed", e); }
+                    });
+                } catch (e) { console.error("video setup failed", e); }
+            };
+            // currentTime target (seconds) for the audio position, or null
+            // while the video section hasn't started yet.
+            this.videoTimeFor = function (audioMs) {
+                if (!self.bgVideo) return null;
+                const want = (audioMs - self.bgVideo.offset) / 1000;
+                return want < 0 ? null : want;
+            };
+            this.syncVideoBG = function (force) {
+                const v = self.bgVideo;
+                if (!v || !v.el) return;
+                if (!self.audioReady || self.game.paused || self.ended) return;
+                let want = null;
+                try { want = self.videoTimeFor(self.osu.audio.getPosition() * 1000); }
+                catch (e) { return; }
+                try {
+                    if (want === null) {
+                        if (!v.el.paused) v.el.pause();
+                        return;
+                    }
+                    if (v.el.paused || force) {
+                        try { v.el.currentTime = want; } catch (e) { /* ignore */ }
+                        const pr = v.el.play();
+                        if (pr && pr.catch) pr.catch(function () { /* autoplay policy */ });
+                    } else if (Math.abs(v.el.currentTime - want) > 0.08) {
+                        try { v.el.currentTime = want; } catch (e) { /* ignore */ }
+                    }
+                } catch (e) { /* ignore */ }
+            };
+            this.stopVideoBG = function () {
+                try { if (self._videoTimer) clearTimeout(self._videoTimer); } catch (e) {}
+                self._videoTimer = null;
+                const v = self.bgVideo;
+                if (!v || !v.el) return;
+                try { v.el.pause(); } catch (e) {}
+            };
+            this.destroyVideoBG = function () {
+                self.stopVideoBG();
+                const v = self.bgVideo;
+                self.bgVideo = null;
+                if (!v) return;
+                try { if (v.url) URL.revokeObjectURL(v.url); } catch (e) {}
+                try {
+                    if (v.el) {
+                        v.el.removeAttribute("src");
+                        if (v.el.parentNode) v.el.parentNode.removeChild(v.el);
+                    }
+                } catch (e) {}
+            };
+            self.setupVideoBG();
 
             // load combo colors
             function convertcolor(color) {
@@ -1374,6 +1472,7 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                         this.game.updatePlayerActions(time);
                         this.progressOverlay.update(time);
                         this.errorMeter.update(time);
+                        self.syncVideoBG(false);
                     }
                     // Show "Skip intro" while the first object is far away.
                     try {
@@ -1432,6 +1531,7 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 self.progressOverlay.destroy(opt);
                 self.gamefield.destroy(opt);
                 self.background.destroy();
+                self.destroyVideoBG();
                 // remove skip-intro button
                 try {
                     if (self.skipButton && self.skipButton.parentNode) {
@@ -1454,7 +1554,13 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 self.started = true;
                 self.osu.audio.gain.gain.value = self.game.musicVolume * self.game.masterVolume;
                 self.osu.audio.playbackRate = self.playbackRate;
-                self.osu.audio.play(self.backgroundFadeTime + self.wait);
+                const leadin = self.backgroundFadeTime + self.wait;
+                self.osu.audio.play(leadin);
+                // start the video with the audio (per-frame sync corrects drift)
+                try { if (self._videoTimer) clearTimeout(self._videoTimer); } catch (e) {}
+                if (self.bgVideo || self.game.backgroundVideo) {
+                    self._videoTimer = setTimeout(function () { self.syncVideoBG(true); }, Math.max(0, leadin));
+                }
             };
 
             this.retry = function () {

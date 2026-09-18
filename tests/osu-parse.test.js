@@ -95,3 +95,45 @@ test("osu-parse: missing PreviewTime/Mode get safe defaults", () => {
   H.eq(t.general.Mode, 0, "mode default");
   H.eq(t.general.StackLeniency, 0.7, "leniency intact");
 });
+
+const MAP_VIDEO = MAP_BASIC.replace("[HitObjects]", `[Events]
+Video,0,"bg.avi"
+0,0,"bg.jpg",0,0
+[HitObjects]`);
+
+test("video: Video event parses filename and offset", () => {
+  const t = decode(MAP_VIDEO);
+  H.deepEq(t.video, { filename: "bg.avi", offset: 0 }, "string form");
+  const t2 = decode(MAP_VIDEO.replace('Video,0,"bg.avi"', '1,1500,"vid.mp4"'));
+  H.deepEq(t2.video, { filename: "vid.mp4", offset: 1500 }, "numeric form");
+});
+
+test("video: maps without video get null", () => {
+  const t = decode(MAP_BASIC);
+  H.eq(t.video, null, "no video");
+});
+
+test("video: getVideoFile finds entries case-insensitively", () => {
+  const Osu = exposed.Osu;
+  const seen = {};
+  const zip = {
+    getChildByName(name) {
+      seen.exact = name;
+      throw new Error("not found exactly");
+    },
+    children: [
+      { name: "BG.AVI", getBlob(mime, cb) { seen.mime = mime; cb({ type: mime }); } },
+    ],
+  };
+  const osu = new Osu(zip);
+  let got = "pending";
+  osu.getVideoFile({ video: { filename: "bg.avi", offset: 0 } }, (blob) => { got = blob; });
+  H.eq(seen.exact, "bg.avi", "tried exact name first");
+  H.eq(got && got.type, "video/x-msvideo", "avi mime, got " + JSON.stringify(got));
+  let miss = "pending";
+  osu.getVideoFile({ video: { filename: "nope.mp4", offset: 0 } }, (blob) => { miss = blob; });
+  H.eq(miss, null, "missing file -> null");
+  let novid = "pending";
+  osu.getVideoFile({}, (blob) => { novid = blob; });
+  H.eq(novid, null, "no video info -> null");
+});

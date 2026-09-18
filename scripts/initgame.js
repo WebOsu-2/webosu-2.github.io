@@ -35,6 +35,7 @@ function(Osu, _, sound, Playback) {
         showhwmouse: false,
         snakein: true,
         snakeout: true,
+        backgroundVideo: false,
 
         // audio
         masterVolume: 0.7,
