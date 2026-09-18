@@ -1,61 +1,65 @@
-function setOptionPanel() {
+// ---- settings state ----
+// Initialized IMMEDIATELY at script eval (not on DOMContentLoaded):
+// list-page inline scripts fetch beatmaps during HTML parsing, before
+// DOMContentLoaded fires, and must already see saved choices (provider,
+// video flag). Widget binding still waits for the DOM in setOptionPanel.
+function storageGet(key) {
   // localStorage access itself throws under private mode / shields that
   // block storage (e.g. Brave mobile): without guards the whole settings
   // init dies and every choice silently reverts to defaults on reload.
-  function storageGet(key) {
-    try {
-      const s = window.localStorage;
-      return s ? s.getItem(key) : null;
-    } catch (e) { return null; }
-  }
-  function storageSet(key, val) {
-    try {
-      const s = window.localStorage;
-      if (s) s.setItem(key, val);
-    } catch (e) { /* session-only settings */ }
-  }
-  // Coerce stored settings: a single corrupt/legacy value (e.g. a null or
-  // non-numeric audio offset) used to poison the audio clock with NaN and
-  // freeze every game at load. Unknown keys are dropped.
-  function sanitizeSettings(s) {
-    const numericKeys = ["dim", "blur", "cursorsize", "mastervolume",
-      "effectvolume", "musicvolume", "audiooffset",
-      "K1keycode", "K2keycode", "Kpausekeycode", "Kpause2keycode"];
-    const out = {};
-    if (!s || typeof s !== "object") return out;
-    for (const k of Object.keys(s)) {
-      if (!(k in defaultsettings)) continue; // drop unknown/legacy keys
-      if (numericKeys.includes(k)) {
-        const n = parseFloat(s[k]);
-        if (Number.isFinite(n)) out[k] = n;
-        // else: fall back to the default already in gamesettings
-      } else {
-        out[k] = s[k];
-      }
-    }
-    return out;
-  }
-  function loadFromLocal() {
-    let str = storageGet("osugamesettings");
-    if (str) {
-      try {
-        let s = JSON.parse(str);
-        if (s) Object.assign(gamesettings, sanitizeSettings(s));
-      } catch (e) { console.error("bad saved settings, using defaults", e); }
+  try {
+    const s = window.localStorage;
+    return s ? s.getItem(key) : null;
+  } catch (e) { return null; }
+}
+function storageSet(key, val) {
+  try {
+    const s = window.localStorage;
+    if (s) s.setItem(key, val);
+  } catch (e) { /* session-only settings */ }
+}
+// Coerce stored settings: a single corrupt/legacy value (e.g. a null or
+// non-numeric audio offset) used to poison the audio clock with NaN and
+// freeze every game at load. Unknown keys are dropped.
+function sanitizeSettings(s) {
+  const numericKeys = ["dim", "blur", "cursorsize", "mastervolume",
+    "effectvolume", "musicvolume", "audiooffset",
+    "K1keycode", "K2keycode", "Kpausekeycode", "Kpause2keycode"];
+  const out = {};
+  if (!s || typeof s !== "object") return out;
+  for (const k of Object.keys(s)) {
+    if (!(k in defaultsettings)) continue; // drop unknown/legacy keys
+    if (numericKeys.includes(k)) {
+      const n = parseFloat(s[k]);
+      if (Number.isFinite(n)) out[k] = n;
+      // else: fall back to the default already in gamesettings
+    } else {
+      out[k] = s[k];
     }
   }
-
-  function saveToLocal() {
-    storageSet(
-      "osugamesettings",
-      JSON.stringify(window.gamesettings)
-    );
+  return out;
+}
+function loadFromLocal() {
+  let str = storageGet("osugamesettings");
+  if (str) {
+    try {
+      let s = JSON.parse(str);
+      if (s) Object.assign(gamesettings, sanitizeSettings(s));
+    } catch (e) { console.error("bad saved settings, using defaults", e); }
   }
+}
 
-  // give inputs initial value; set their callback on change
-  // give range inputs a visual feedback (a hovering indicator that shows on drag)
+function saveToLocal() {
+  storageSet(
+    "osugamesettings",
+    JSON.stringify(window.gamesettings)
+  );
+}
 
-  let defaultsettings = {
+// give inputs initial value; set their callback on change
+// give range inputs a visual feedback (a hovering indicator that shows on drag)
+
+var defaultsettings = {
     dim: 60,
     blur: 0,
     cursorsize: 1.0,
@@ -99,9 +103,13 @@ function setOptionPanel() {
     hideGreat: false,
     hideFollowPoints: false,
   };
-  window.gamesettings = {};
-  Object.assign(gamesettings, defaultsettings);
-  gamesettings.refresh = loadFromLocal;
+window.gamesettings = {};
+Object.assign(gamesettings, defaultsettings);
+gamesettings.refresh = loadFromLocal;
+loadFromLocal();
+
+function setOptionPanel() {
+  // re-sync (cheap) in case storage changed since head eval
   loadFromLocal();
 
   window.gamesettings.loadToGame = function () {
