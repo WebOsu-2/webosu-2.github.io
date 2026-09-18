@@ -81,13 +81,32 @@ test("settings: range chips show values, restore works", () => {
   H.eq(gamesettings.dim, 60, "restored to default");
 });
 
+test("settings: saved choices are live before DOMContentLoaded", () => {
+  // List-page inline scripts fetch during HTML parsing, before the
+  // DOMContentLoaded binder runs. A selected Mino must already route.
+  // (Re-evaluating the scripts simulates a fresh page load.)
+  const fs = require("fs");
+  delete global.window.gamesettings;
+  global.localStorage._s.osugamesettings = JSON.stringify({ apiBrowsing: "mino", apiDownload: "nerinyan" });
+  eval(fs.readFileSync(global.ROOT + "/scripts/config.js", "utf8"));
+  eval(fs.readFileSync(global.ROOT + "/scripts/settings.js", "utf8"));
+  H.eq(window.gamesettings.apiBrowsing, "mino", "browsing immediate");
+  H.eq(currentProviders().browseId, "mino", "router sees mino pre-DOM");
+  H.eq(currentProviders().downloadId, "nerinyan", "download immediate");
+  H.assert(buildListUrl("latest", 0, { limit: 20 }).url.indexOf("catboy.best") !== -1, "mino url pre-DOM");
+});
+
 test("settings: blocked storage (private mode/shields) degrades gracefully", () => {
+  // Fresh boot with unreadable storage: must not throw, must default.
+  const fs = require("fs");
+  delete global.window.gamesettings;
   const realStorage = global.localStorage;
   global.localStorage = {
     getItem() { throw new Error("denied"); },
     setItem() { throw new Error("denied"); },
   };
   try {
+    eval(fs.readFileSync(global.ROOT + "/scripts/settings.js", "utf8"));
     setOptionPanel(); // must not throw; falls back to defaults
     H.eq(gamesettings.apiDownload, "sayobot", "defaults when unreadable");
     const dl = document.getElementById("apidownload-select");
