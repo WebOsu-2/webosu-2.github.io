@@ -603,6 +603,20 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                                 if (typeof showErrorToast === "function") {
                                     showErrorToast("Background video failed to play (unsupported codec?).");
                                 }
+                                // degrade to the regular background instead
+                                // of a black void: drop the dead element,
+                                // restore the opaque canvas + cover sprite.
+                                try { my.stopVideoBG(); } catch (e) {}
+                                my.bgVideo = null;
+                                try {
+                                    if (window.app && window.app.renderer && window.app.renderer.background) {
+                                        window.app.renderer.background.alpha = 1;
+                                    }
+                                } catch (e) { /* ignore */ }
+                                try {
+                                    if (el.parentNode) el.parentNode.removeChild(el);
+                                    if (my.background) my.background.visible = true;
+                                } catch (e) { /* ignore */ }
                             });
                             const area = document.getElementById("game-area");
                             if (area) area.appendChild(el);

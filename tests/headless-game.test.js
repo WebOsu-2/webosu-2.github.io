@@ -188,3 +188,101 @@ test("headless: enabled video layer appears above nothing and unhides", async ()
     delete global.window.app;
   }
 });
+
+test("headless: video element error toasts once, game plays on", async () => {
+  global.window.app = { view: { style: {} }, renderer: { background: { color: 0x111111, alpha: 1 } } };
+  const toasts = [];
+  global.showErrorToast = (m) => toasts.push(m);
+  try {
+    const game = makeGame({ backgroundVideo: true });
+    const mp4bytes = fs.readFileSync(path.join(FIXDIR, "audio.mp3"));
+    const osu = new Osu(stubZip({
+      name: "bg.mp4",
+      getText(cb) { cb(""); },
+      getBlob(mime, cb) { cb({ _buf: mp4bytes.buffer.slice(mp4bytes.byteOffset, mp4bytes.byteOffset + mp4bytes.byteLength), type: mime }); },
+    }));
+    await new Promise((resolve, reject) => {
+      osu.ondecoded = () => resolve();
+      osu.onerror = (e) => reject(new Error("osu error: " + e));
+      osu.load();
+      setTimeout(() => reject(new Error("decode timeout")), 5000);
+    });
+    osu.filterTracks();
+    const track = osu.tracks.find((t) => (t.metadata.Version || "").includes("Normal")) || osu.tracks[0];
+    track.video = { filename: "bg.mp4", offset: 0 };
+    const pb = new Playback(game, osu, track);
+    const area = document.getElementById("game-area");
+    const vid = area.children.find((c) => c.className === "bg-video");
+    H.assert(vid, "video element exists before failure");
+    vid.dispatchEvent("error"); // unplayable file
+    H.assert(toasts.some((m) => m.indexOf("failed to play") !== -1), "explains failure, got " + JSON.stringify(toasts));
+    H.eq(area.children.filter((c) => c.className === "bg-video").length, 0, "dead element removed");
+    H.eq(global.window.app.renderer.background.alpha, 1, "canvas opaque again");
+    if (pb.background) H.eq(pb.background.visible, true, "cover restored instead of black void");
+    await new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error("audio decode timeout")), 5000);
+      const prev = osu.onready;
+      osu.onready = () => { clearTimeout(to); if (prev) prev(); resolve(); };
+      pb.load();
+    });
+    pb.start();
+    let maxUpcoming = 0, lastTime = -Infinity;
+    for (let f = 0; f < 300; f++) {
+      ctx.currentTime += 0.016;
+      pb.render(performance.now());
+      const t = pb.osu.audio.getPosition() * 1000;
+      if (Number.isFinite(t)) lastTime = t;
+      maxUpcoming = Math.max(maxUpcoming, pb.upcomingHits.length);
+      if (pb.ended) break;
+    }
+    H.assert(lastTime > 0, "audio advances despite dead video");
+    H.assert(maxUpcoming > 0, "objects stream despite dead video");
+    pb.destroy();
+  } finally {
+    delete global.window.app;
+    delete global.showErrorToast;
+  }
+});
+
+test("headless: legacy avi skips video, toasts, game plays as normal", async () => {
+  const toasts = [];
+  global.showErrorToast = (m) => toasts.push(m);
+  try {
+    const game = makeGame({ backgroundVideo: true });
+    const osu = new Osu(stubZip());
+    await new Promise((resolve, reject) => {
+      osu.ondecoded = () => resolve();
+      osu.onerror = (e) => reject(new Error("osu error: " + e));
+      osu.load();
+      setTimeout(() => reject(new Error("decode timeout")), 5000);
+    });
+    osu.filterTracks();
+    const track = osu.tracks.find((t) => (t.metadata.Version || "").includes("Normal")) || osu.tracks[0];
+    track.video = { filename: "old.avi", offset: 0 }; // legacy container
+    const pb = new Playback(game, osu, track);
+    const area = document.getElementById("game-area");
+    H.eq(area.children.filter((c) => c.className === "bg-video").length, 0, "no video element for avi");
+    H.assert(toasts.some((m) => m.indexOf(".avi") !== -1), "explains legacy format, got " + JSON.stringify(toasts));
+    await new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error("audio decode timeout")), 5000);
+      const prev = osu.onready;
+      osu.onready = () => { clearTimeout(to); if (prev) prev(); resolve(); };
+      pb.load();
+    });
+    pb.start();
+    let maxUpcoming = 0, lastTime = -Infinity;
+    for (let f = 0; f < 300; f++) {
+      ctx.currentTime += 0.016;
+      pb.render(performance.now());
+      const t = pb.osu.audio.getPosition() * 1000;
+      if (Number.isFinite(t)) lastTime = t;
+      maxUpcoming = Math.max(maxUpcoming, pb.upcomingHits.length);
+      if (pb.ended) break;
+    }
+    H.assert(lastTime > 0, "audio advances, got " + lastTime);
+    H.assert(maxUpcoming > 0, "objects stream, avi is display-only");
+    pb.destroy();
+  } finally {
+    delete global.showErrorToast;
+  }
+});
