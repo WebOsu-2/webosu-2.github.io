@@ -18,9 +18,11 @@ let totalPass = 0, totalFail = 0;
 const failedFiles = [];
 for (const f of files) {
   console.log(`\n### ${f}`);
+  // if the filter already selected this file, run all its cases
+  const caseFilter = f.includes(filter) ? "" : filter;
   try {
     const out = execFileSync(process.execPath,
-      [path.join(__dirname, "run-file.js"), path.join(__dirname, f), filter],
+      [path.join(__dirname, "run-file.js"), path.join(__dirname, f), caseFilter],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     process.stdout.write(out);
     const m = out.match(/__RESULT__ (\d+) (\d+)/);
