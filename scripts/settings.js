@@ -1,9 +1,32 @@
 function setOptionPanel() {
+  // Coerce stored settings: a single corrupt/legacy value (e.g. a null or
+  // non-numeric audio offset) used to poison the audio clock with NaN and
+  // freeze every game at load. Unknown keys are dropped.
+  function sanitizeSettings(s) {
+    const numericKeys = ["dim", "blur", "cursorsize", "mastervolume",
+      "effectvolume", "musicvolume", "audiooffset",
+      "K1keycode", "K2keycode", "Kpausekeycode", "Kpause2keycode"];
+    const out = {};
+    if (!s || typeof s !== "object") return out;
+    for (const k of Object.keys(s)) {
+      if (!(k in defaultsettings)) continue; // drop unknown/legacy keys
+      if (numericKeys.includes(k)) {
+        const n = parseFloat(s[k]);
+        if (Number.isFinite(n)) out[k] = n;
+        // else: fall back to the default already in gamesettings
+      } else {
+        out[k] = s[k];
+      }
+    }
+    return out;
+  }
   function loadFromLocal() {
     let str = window.localStorage.getItem("osugamesettings");
     if (str) {
-      let s = JSON.parse(str);
-      if (s) Object.assign(gamesettings, s);
+      try {
+        let s = JSON.parse(str);
+        if (s) Object.assign(gamesettings, sanitizeSettings(s));
+      } catch (e) { console.error("bad saved settings, using defaults", e); }
     }
   }
 

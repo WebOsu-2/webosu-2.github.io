@@ -257,6 +257,56 @@ function buildListUrl(kind, offset, extra) {
     };
 }
 
+// Live commit badge for the footer: replaces the old hardcoded version
+// number with the currently deployed master commit (linked). Result is
+// cached for an hour to stay far under the API rate limit.
+function showLiveCommit() {
+    let el = null;
+    try { el = document.getElementById("live-commit"); } catch (e) { return; }
+    if (!el || el.dataset.done) return;
+    el.dataset.done = "1";
+    const REPO = "WebOsu-2/webosu-2.github.io";
+    function render(sha) {
+        try {
+            el.innerText = "commit " + sha.slice(0, 7);
+            el.href = "https://github.com/" + REPO + "/commit/" + sha;
+        } catch (e) { /* ignore */ }
+    }
+    try {
+        const raw = window.localStorage && window.localStorage.getItem("livecommit");
+        if (raw) {
+            const cached = JSON.parse(raw);
+            if (cached && cached.sha && Date.now() - cached.time < 3600 * 1000) {
+                render(cached.sha);
+                return;
+            }
+        }
+    } catch (e) { /* ignore */ }
+    try {
+        fetch("https://api.github.com/repos/" + REPO + "/commits/master")
+            .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function (c) {
+                if (!c || !c.sha) throw new Error("bad response");
+                try { window.localStorage.setItem("livecommit", JSON.stringify({ sha: c.sha, time: Date.now() })); } catch (e) {}
+                render(c.sha);
+            })
+            .catch(function () { /* keep placeholder text */ });
+    } catch (e) { /* ignore */ }
+}
+(function watchLiveCommit() {
+    try {
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", showLiveCommit);
+        } else {
+            showLiveCommit();
+        }
+        // the footer is injected via fetch() after load; fill the badge then
+        const obs = new MutationObserver(function () { showLiveCommit(); });
+        obs.observe(document.documentElement, { childList: true, subtree: true });
+        setTimeout(function () { try { obs.disconnect(); } catch (e) {} }, 30000);
+    } catch (e) { /* ignore */ }
+})();
+
 // Non-blocking error toast (replaces alert() so background work like
 // downloads/decodes never traps the user in a modal dialog).
 function showErrorToast(msg, ms) {
