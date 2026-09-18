@@ -1,8 +1,9 @@
 
 // scripts/config.js
 const BEATMAP_PROVIDER = {
-    // Beatmap .osz download
-    DOWNLOAD: "https://txy1.sayobot.cn/beatmaps/download/mini/",
+    // Beatmap .osz download (mino/catboy.best — CORS-open, fast, Content-Length present)
+    // prev: "https://txy1.sayobot.cn/beatmaps/download/mini/"
+    DOWNLOAD: "https://catboy.best/d/",
     
     // Audio preview (mp3)
     PREVIEW: "https://cdn.sayobot.cn:25225/preview/",

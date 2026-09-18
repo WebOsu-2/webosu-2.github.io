@@ -112,9 +112,21 @@ function startpreview(box) {
     };
     return audio
 }
-function startdownload(box) {
-    let currentAudio = startpreview(box);
+function startdownload(box, onDone) {
+    // Lazy full .osz fetch. Preview audio is separate (startpreview).
+    // If already have blob, fire callback immediately.
+    if (box.oszblob) {
+        if (typeof onDone === "function") {
+            try { onDone(box.oszblob); } catch (e) { console.error(e); }
+        }
+        return;
+    }
+    // If already downloading, queue callback and return (no duplicate fetch).
     if (box.downloading) {
+        if (typeof onDone === "function") {
+            if (!box._pendingDownloads) box._pendingDownloads = [];
+            box._pendingDownloads.push(onDone);
+        }
         return;
     }
 
@@ -181,13 +193,22 @@ function startdownload(box) {
         })
         .then(blob => {
             box.oszblob = blob;
+            box.downloading = false;
             bar.className = "finished";
             box.classList.remove("downloading");
-            currentAudio.softstop();
+            var cbs = box._pendingDownloads || [];
+            box._pendingDownloads = null;
+            if (typeof onDone === "function") {
+                try { onDone(blob); } catch (e) { console.error(e); }
+            }
+            for (var i = 0; i < cbs.length; ++i) {
+                try { cbs[i](blob); } catch (e) { console.error(e); }
+            }
         })
         .catch(error => {
             console.error("Download failed:", error.message);
             box.downloading = false;
+            box._pendingDownloads = null;
             box.classList.remove("downloading");
             try {
                 title.innerText = "Download failed — retry later";
