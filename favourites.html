@@ -98,37 +98,77 @@
     if (window.localforage) {
       window.localforage.getItem("likedsidset", function (err, val) {
         if (err) {
-          alert("Error loading liked beatmap list");
+          document.getElementById("beatmap-list").innerText =
+            "Error loading liked beatmap list. Please reload.";
           return;
         }
-        if (val && val.size) {
-          list = Array.from(val);
+        // Accept both legacy Set and current Array storage.
+        var list;
+        if (typeof Set !== "undefined" && val instanceof Set) list = Array.from(val);
+        else if (Array.isArray(val)) list = val.slice();
+        else if (val && typeof normalizeLikedList === "function") list = normalizeLikedList(val);
+        else list = [];
+        // drop invalid entries, dedupe
+        var seen = {};
+        list = list.filter(function (sid) {
+          if (!sid && sid !== 0) return false;
+          var k = String(sid);
+          if (seen[k]) return false;
+          seen[k] = true;
+          return true;
+        });
+        if (list.length) {
+          // newest favourites first
+          list = list.reverse();
+          var failed = 0;
           function addlist(startoffset, maxlength) {
+            var target = document.getElementById("beatmap-list");
+            // clear placeholder text on first batch
+            if (startoffset === 0 && target.innerText.indexOf("Loading") === 0) target.innerText = "";
             for (
-              let i = startoffset;
+              var i = startoffset;
               i < list.length && i < startoffset + maxlength;
               ++i
-            )
-              addBeatmapSid(list[i]);
+            ) {
+              try {
+                var p = addBeatmapSid(list[i], target);
+                if (p && p.catch) p.catch(function () { failed++; });
+              } catch (e) {
+                console.error(e);
+                failed++;
+              }
+            }
             if (list.length <= startoffset + maxlength) {
               document
                 .getElementById("btnmore")
                 .setAttribute("style", "display:none;");
+              if (failed > 0) {
+                var note = document.createElement("div");
+                note.innerText = failed + " favourited map(s) could not be loaded (deleted or network error).";
+                target.appendChild(note);
+              }
             }
           }
+          document.getElementById("beatmap-list").innerText = "Loading favourites…";
           addlist(0, 20);
           var cur = 20;
           document.getElementById("btnmore").onclick = function () {
             addlist(cur, 20);
             cur += 20;
           };
+          // hide Load more immediately if everything fits
+          if (list.length <= 20) {
+            document.getElementById("btnmore").setAttribute("style", "display:none;");
+          }
         } else {
           document.getElementById("beatmap-list").innerText =
             "There are no beatmaps to show, add more.";
+          document.getElementById("btnmore").setAttribute("style", "display:none;");
         }
       });
     } else {
-      alert("localforage not supported");
+      document.getElementById("beatmap-list").innerText =
+        "Favourites need local storage support.";
     }
   </script>
 </body>

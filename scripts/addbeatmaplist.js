@@ -1,3 +1,87 @@
+// ---- Liked (favourites) storage helpers ----
+// Historically likedsidset was stored as a Set. Set does not survive JSON
+// localStorage fallbacks (becomes {}), which silently wiped favourites.
+// We now store a plain Array of sids and transparently migrate old values.
+function normalizeLikedList(val) {
+    if (!val) return [];
+    // legacy in-memory Set (or IndexedDB structured-clone Set)
+    if (typeof Set !== "undefined" && val instanceof Set) return Array.from(val).filter(function (x) { return x || x === 0; });
+    if (Array.isArray(val)) {
+        // dedupe, drop falsy
+        var seen = {};
+        var out = [];
+        for (var i = 0; i < val.length; ++i) {
+            var sid = val[i];
+            if (!sid && sid !== 0) continue;
+            var k = String(sid);
+            if (!seen[k]) { seen[k] = true; out.push(sid); }
+        }
+        return out;
+    }
+    // corrupted JSON-serialized Set looks like {} — unrecoverable, start fresh
+    // (previously this caused "favourites deleted sometimes" / empty tab)
+    if (typeof val === "object") {
+        // last resort: if it looks array-like with numeric keys, collect values
+        var vals = [];
+        try {
+            var keys = Object.keys(val);
+            // plain {} from JSON Set has no useful keys — return []
+            if (keys.length && keys.every(function (k) { return String(parseInt(k, 10)) === k; })) {
+                for (var j = 0; j < keys.length; ++j) vals.push(val[keys[j]]);
+                return normalizeLikedList(vals);
+            }
+        } catch (e) { /* ignore */ }
+        return [];
+    }
+    return [];
+}
+function likedHas(sid) {
+    var list = window.liked_sid_set;
+    if (!list) return false;
+    if (typeof Set !== "undefined" && list instanceof Set) return list.has(sid);
+    if (Array.isArray(list)) return list.indexOf(sid) !== -1;
+    return false;
+}
+function saveLikedList() {
+    var store = (window.localforage) || ((typeof localforage !== "undefined") ? localforage : null);
+    if (!store) return;
+    try {
+        // always persist as Array (JSON-safe)
+        var arr = normalizeLikedList(window.liked_sid_set);
+        window.liked_sid_set = arr;
+        store.setItem("likedsidset", arr, function (err) {
+            if (err) console.error("Error saving liked beatmap list");
+        });
+    } catch (e) {
+        console.error("Error saving liked beatmap list", e);
+    }
+}
+function likedAdd(sid) {
+    if (!window.liked_sid_set) window.liked_sid_set = [];
+    // migrate legacy Set in place
+    if (typeof Set !== "undefined" && window.liked_sid_set instanceof Set) {
+        window.liked_sid_set = normalizeLikedList(window.liked_sid_set);
+    }
+    if (!Array.isArray(window.liked_sid_set)) window.liked_sid_set = normalizeLikedList(window.liked_sid_set);
+    if (window.liked_sid_set.indexOf(sid) === -1) window.liked_sid_set.push(sid);
+    saveLikedList();
+}
+function likedDelete(sid) {
+    if (!window.liked_sid_set) return;
+    if (typeof Set !== "undefined" && window.liked_sid_set instanceof Set) {
+        window.liked_sid_set.delete(sid);
+        // migrate to Array on next save
+        saveLikedList();
+        return;
+    }
+    if (Array.isArray(window.liked_sid_set)) {
+        var i = window.liked_sid_set.indexOf(sid);
+        if (i !== -1) window.liked_sid_set.splice(i, 1);
+        saveLikedList();
+    }
+}
+if (!window.liked_sid_set_callbacks) window.liked_sid_set_callbacks = [];
+
 function starname(star) {
     if (typeof (star) == "null") return "unknown";
     if (typeof (star) == "undefined") return "unknown";
@@ -121,7 +205,11 @@ var NSaddBeatmapList = {
             if (!window.liked_sid_set || !box.sid) {
                 return;
             }
-            if (window.liked_sid_set.has(box.sid)) {
+            // migrate legacy Set to Array once loaded
+            if (typeof Set !== "undefined" && window.liked_sid_set instanceof Set) {
+                window.liked_sid_set = normalizeLikedList(window.liked_sid_set);
+            }
+            if (likedHas(box.sid)) {
                 icon.classList.add("icon-heart");
                 icon.onclick = box.undolike;
             }
@@ -133,27 +221,15 @@ var NSaddBeatmapList = {
         }
         box.like = function (e) {
             e.stopPropagation();
-            window.liked_sid_set.add(box.sid);
-            localforage.setItem("likedsidset", window.liked_sid_set, function (err, val) {
-                if (err) {
-                    console.error("Error saving liked beatmap list");
-                }
-                else {
-                    icon.classList.add("hint-liked");
-                }
-            });
+            likedAdd(box.sid);
+            icon.classList.add("hint-liked");
             icon.onclick = box.undolike;
             icon.classList.remove("icon-heart-empty");
             icon.classList.add("icon-heart");
         }
         box.undolike = function (e) {
             e.stopPropagation();
-            window.liked_sid_set.delete(box.sid);
-            localforage.setItem("likedsidset", window.liked_sid_set, function (err, val) {
-                if (err) {
-                    console.error("Error saving liked beatmap list");
-                }
-            });
+            likedDelete(box.sid);
             icon.onclick = box.like;
             icon.classList.remove("icon-heart");
             icon.classList.add("icon-heart-empty");
@@ -349,14 +425,21 @@ async function addBeatmapList(listurl, list, filter, maxsize) {
 
 function addBeatmapSid(sid, list) {
     if (!list) list = document.getElementById("beatmap-list");
+    if (sid === undefined || sid === null || sid === "") {
+        console.warn("addBeatmapSid: invalid sid", sid);
+        return Promise.resolve(null);
+    }
     const url = getInfoUrlV2(sid);
 
-    fetch(url)
-        .then(response => response.json())
+    return fetch(url)
+        .then(function (response) {
+            if (!response.ok) throw new Error("HTTP " + response.status);
+            return response.json();
+        })
         .then(res => {
-            if (res.status === -1) {
-                alert("Beatmap not found with specified sid");
-                return;
+            if (!res || res.status === -1 || !res.data) {
+                console.warn("Beatmap not found with sid", sid);
+                return null;
             }
             // use data of first track as set data
             const box = NSaddBeatmapList.addpreviewbox(res.data, list);
@@ -372,6 +455,10 @@ function addBeatmapSid(sid, list) {
                 window.beatmaplistLoadedCallback = null;
                 // to make sure it's called only once
             }
+            return box;
         })
-        .catch(error => console.error(error)); // Handle errors
+        .catch(function (error) {
+            console.error("addBeatmapSid failed for sid " + sid + ":", error);
+            return null;
+        });
 }

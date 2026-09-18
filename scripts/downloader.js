@@ -9,10 +9,30 @@ function startpreview(box) {
         volume = Math.min(1, Math.max(0, volume));
     }
 
-    // Stop any currently playing audio using a loop
-    for (let audio of document.getElementsByTagName("audio")) {
-        if (audio.softstop) {
-            audio.softstop();
+    function clearAudioTimers(audio) {
+        if (!audio) return;
+        if (audio._fadeIn) { clearInterval(audio._fadeIn); audio._fadeIn = null; }
+        if (audio._fadeOut) { clearInterval(audio._fadeOut); audio._fadeOut = null; }
+        if (audio._softstop) { clearInterval(audio._softstop); audio._softstop = null; }
+    }
+    function removeAudio(audio) {
+        clearAudioTimers(audio);
+        try { audio.pause(); } catch (e) {}
+        try { audio.remove(); } catch (e) {
+            if (audio.parentNode) audio.parentNode.removeChild(audio);
+        }
+    }
+
+    // Stop any currently playing audio (crossfade old previews out).
+    // Collect first: getElementsByTagName is live, mutating while
+    // iterating would skip elements and stack overlapping previews.
+    var olds = Array.prototype.slice.call(document.getElementsByTagName("audio"));
+    for (let i = 0; i < olds.length; ++i) {
+        let old = olds[i];
+        if (old.softstop) {
+            try { old.softstop(); } catch (e) {}
+        } else {
+            removeAudio(old);
         }
     }
 
@@ -23,41 +43,73 @@ function startpreview(box) {
     source.src = getPreviewUrl(box.sid);
     source.type = "audio/mpeg";
     audio.appendChild(source);
+    audio.preload = "auto";
 
     // Set initial volume to 0 and start playing
     audio.volume = 0;
-    audio.play();
+    try {
+        var playPromise = audio.play();
+        if (playPromise && playPromise.catch) playPromise.catch(function (e) {
+            // autoplay policy / network error: drop silently, don't stack
+            removeAudio(audio);
+        });
+    } catch (e) {
+        removeAudio(audio);
+        return audio;
+    }
     document.body.appendChild(audio);
 
     // Function to gradually increase volume
     const fadeIn = setInterval(() => {
+        if (!audio.isConnected) { clearInterval(fadeIn); audio._fadeIn = null; return; }
         if (audio.volume < volume) {
             audio.volume = Math.min(volume, audio.volume + 0.05 * volume);
         } else {
             clearInterval(fadeIn);
+            audio._fadeIn = null;
         }
     }, 30);
+    audio._fadeIn = fadeIn;
 
     // Function to gradually decrease volume and remove audio
     const fadeOut = setInterval(() => {
-        if (audio.currentTime > 9.3) { // Assuming preview is 10 seconds long
-            audio.volume = Math.max(0, audio.volume - 0.05 * volume);
-        }
-        if (audio.volume === 0) {
-            clearInterval(fadeOut);
-            audio.remove();
-        }
+        if (!audio.isConnected) { clearInterval(fadeOut); audio._fadeOut = null; return; }
+        try {
+            if (audio.currentTime > 9.3) { // Assuming preview is 10 seconds long
+                audio.volume = Math.max(0, audio.volume - 0.05 * volume);
+            }
+            if (audio.volume === 0 && audio.currentTime > 9.3) {
+                clearInterval(fadeOut);
+                audio._fadeOut = null;
+                removeAudio(audio);
+            }
+        } catch (e) { /* ignore */ }
     }, 30);
+    audio._fadeOut = fadeOut;
 
     // Soft stop function for the audio element
     audio.softstop = function () {
+        if (audio._softstop) return;
+        clearAudioTimers(audio);
         const fadeOutInterval = setInterval(() => {
-            audio.volume = Math.max(0, audio.volume - 0.05 * volume);
-            if (audio.volume === 0) {
+            try {
+                audio.volume = Math.max(0, audio.volume - 0.1 * Math.max(volume, 0.01));
+                if (audio.volume === 0) {
+                    clearInterval(fadeOutInterval);
+                    audio._softstop = null;
+                    removeAudio(audio);
+                }
+            } catch (e) {
                 clearInterval(fadeOutInterval);
-                audio.remove();
+                audio._softstop = null;
+                removeAudio(audio);
             }
         }, 10);
+        audio._softstop = fadeOutInterval;
+        // hard fallback: never leave a preview playing
+        setTimeout(function () {
+            if (audio.isConnected) removeAudio(audio);
+        }, 2000);
     };
     return audio
 }

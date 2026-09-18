@@ -1,5 +1,7 @@
 define([], function () {
   var checkClickdown = function checkClickdown() {
+    // Ignore clicks while paused or after game end (pause-menu exploit).
+    if (playback.game.paused || playback.ended) return;
     var upcoming = playback.upcomingHits;
     var click = {
       x: playback.game.mouseX,
@@ -245,6 +247,7 @@ define([], function () {
       if (movehistory.length > 10) movehistory.pop();
     };
     var mousedownCallback = function (e) {
+      if (playback.game.paused || playback.ended) return;
       mousemoveCallback(e);
       if (e.button == 0) {
         if (playback.game.M1down) return;
@@ -295,6 +298,7 @@ define([], function () {
       if (movehistory.length > 10) movehistory.pop();
     };
     var touchstartCallback = function (e) {
+      if (playback.game.paused || playback.ended) return;
       touchmoveCallback(e);
       if (playback.game.M1down) {
         if (playback.game.M2down) {
@@ -332,6 +336,7 @@ define([], function () {
         playback.game.M2down;
     };
     var keydownCallback = function (e) {
+      if (playback.game.paused || playback.ended) return;
       if (e.keyCode == playback.game.K1keycode) {
         if (playback.game.K1down) return;
         playback.game.K1down = true;

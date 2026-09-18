@@ -183,11 +183,18 @@
           document.getElementById("beatmap-list-liked").innerText = "Could not get liked beatmaps.";
           return;
         }
-        if (val && val.size) {
+        var liked;
+        if (typeof Set !== "undefined" && val instanceof Set) liked = Array.from(val);
+        else if (Array.isArray(val)) liked = val.slice();
+        else if (val && typeof normalizeLikedList === "function") liked = normalizeLikedList(val);
+        else liked = [];
+        liked = liked.filter(function (x) { return x || x === 0; });
+        if (liked.length) {
           let listlike = document.getElementById("beatmap-list-liked");
-          list = Array.from(val);
-          for (let i = 0; i < list.length && i < 4; ++i)
-            addBeatmapSid(list[i], listlike);
+          // newest first, max 4 on home page
+          liked = liked.reverse();
+          for (let i = 0; i < liked.length && i < 4; ++i)
+            addBeatmapSid(liked[i], listlike);
         }
         else {
           document.getElementById("beatmap-list-liked").innerText = "Heart any beatmap to add them here.";

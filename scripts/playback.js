@@ -87,6 +87,28 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
             self.breakOverlay = new BreakOverlay({ width: game.window.innerWidth, height: game.window.innerHeight });
             self.progressOverlay = new ProgressOverlay({ width: game.window.innerWidth, height: game.window.innerHeight }, this.hits[0].time - 1500, this.hits[this.hits.length - 1].endTime);
 
+            // Skip-intro button for maps with a long lead-in.
+            // (Feature request: "skip at start".)
+            self.skipButton = null;
+            try {
+                var skipBtn = document.createElement("div");
+                skipBtn.id = "skip-intro-btn";
+                skipBtn.innerText = "Skip intro »";
+                skipBtn.setAttribute("hidden", "");
+                skipBtn.style.cssText = "position:fixed;right:24px;bottom:72px;z-index:50;padding:10px 18px;background:rgba(20,20,30,.82);color:#fff;border:2px solid #fff;border-radius:12px;font-size:18px;cursor:pointer;user-select:none;";
+                skipBtn.onclick = function (e) {
+                    try { if (e) e.stopPropagation(); } catch (err) {}
+                    if (!self.audioReady || self.game.paused || self.ended) return;
+                    var target = self.hits[0].time - 2000;
+                    if (target > 0 && self.osu && self.osu.audio && typeof self.osu.audio.skipTo === "function") {
+                        self.osu.audio.skipTo(target);
+                    }
+                    try { skipBtn.setAttribute("hidden", ""); } catch (err) {}
+                };
+                document.body.appendChild(skipBtn);
+                self.skipButton = skipBtn;
+            } catch (e) { /* DOM unavailable? ignore */ }
+
             window.onresize = function () {
                 window.app.renderer.resize(window.innerWidth, window.innerHeight);
                 if (self.audioReady) self.pause();
@@ -200,8 +222,17 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
 
             self.game.paused = false;
             this.pause = function () {
+                if (self.game.paused || self.ended) return;
                 if (this.osu.audio.pause()) { // pause music success
                     this.game.paused = true;
+                    // Clear held inputs: holding Z/X or mouse through pause
+                    // must not keep spinning / hitting while in pause menu.
+                    // (Fixes "spin the spinner while in the menu" exploit.)
+                    self.game.K1down = false;
+                    self.game.K2down = false;
+                    self.game.M1down = false;
+                    self.game.M2down = false;
+                    self.game.down = false;
                     let menu = document.getElementById("pause-menu");
                     menu.removeAttribute("hidden");
                     btn_continue = document.getElementById("pausebtn-continue");
@@ -226,6 +257,23 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 }
             };
             this.resume = function () {
+                if (!self.game.paused) return;
+                // Clear held inputs and reset spinner tracking so the
+                // mouse angle held during pause doesn't cause a huge jump.
+                self.game.K1down = false;
+                self.game.K2down = false;
+                self.game.M1down = false;
+                self.game.M2down = false;
+                self.game.down = false;
+                try {
+                    var t = self.osu.audio.getPosition() * 1000;
+                    for (var i = 0; i < self.upcomingHits.length; ++i) {
+                        var h = self.upcomingHits[i];
+                        if (h && h.type === "spinner" && t >= h.time && t <= h.endTime) {
+                            h.clicked = false;
+                        }
+                    }
+                } catch (e) { /* ignore */ }
                 this.osu.audio.play();
                 this.game.paused = false;
                 document.getElementById("pause-menu").setAttribute("hidden", "");
@@ -1159,6 +1207,10 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
             }
 
             this.updateSpinner = function (hit, time) {
+                // Never accumulate spinner progress while paused or ended.
+                // (Fixes pause-menu spinner exploit: time is frozen while
+                // paused, but mouse deltas would otherwise keep filling.)
+                if (self.game.paused || self.ended) return;
                 // update rotation
                 if (time >= hit.time && time <= hit.endTime) {
                     if (this.game.down) {
@@ -1265,14 +1317,27 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                     time = osu.audio.getPosition() * 1000 + self.offset;
                 }
                 if (typeof time !== 'undefined') {
-                    let nextapproachtime = (waitinghitid < this.hits.length && this.hits[waitinghitid].time - (this.hits[waitinghitid].approachTime || this.approachTime) > time) ? this.hits[waitinghitid].time - (this.hits[waitinghitid].approachTime || this.approachTime) : -1;
-                    this.breakOverlay.countdown(nextapproachtime, time);
-                    this.updateBackground(time);
-                    this.updateHitObjects(time);
-                    this.scoreOverlay.update(time);
-                    this.game.updatePlayerActions(time);
-                    this.progressOverlay.update(time);
-                    this.errorMeter.update(time);
+                    // While paused, freeze gameplay state (don't advance
+                    // spinners/sliders/judgements on a frozen clock).
+                    if (!self.game.paused) {
+                        let nextapproachtime = (waitinghitid < this.hits.length && this.hits[waitinghitid].time - (this.hits[waitinghitid].approachTime || this.approachTime) > time) ? this.hits[waitinghitid].time - (this.hits[waitinghitid].approachTime || this.approachTime) : -1;
+                        this.breakOverlay.countdown(nextapproachtime, time);
+                        this.updateBackground(time);
+                        this.updateHitObjects(time);
+                        this.scoreOverlay.update(time);
+                        this.game.updatePlayerActions(time);
+                        this.progressOverlay.update(time);
+                        this.errorMeter.update(time);
+                    }
+                    // Show "Skip intro" while the first object is far away.
+                    try {
+                        if (self.skipButton) {
+                            var showSkip = self.audioReady && !self.game.paused && !self.ended &&
+                                self.hits.length && (self.hits[0].time - time > 4000);
+                            if (showSkip) self.skipButton.removeAttribute("hidden");
+                            else self.skipButton.setAttribute("hidden", "");
+                        }
+                    } catch (e) { /* ignore */ }
                 }
                 else {
                     this.updateBackground(-100000);
@@ -1296,6 +1361,15 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
             this.destroy = function () {
                 // clean up
                 console.log("playback:destroy");
+                // Fully stop gameplay audio so a retry/quit without reload
+                // can't leave a leaked source playing (the old "open a new
+                // tab to fix desync/echo" workaround).
+                try {
+                    if (self.osu && self.osu.audio) {
+                        if (typeof self.osu.audio.stop === "function") self.osu.audio.stop();
+                        else if (typeof self.osu.audio.pause === "function") self.osu.audio.pause();
+                    }
+                } catch (e) { /* ignore */ }
                 _.each(self.hits, function (hit) {
                     if (!hit.destroyed) {
                         _.each(hit.objects, function (o) { self.gamefield.removeChild(o); o.destroy(); });
@@ -1312,6 +1386,13 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 self.progressOverlay.destroy(opt);
                 self.gamefield.destroy(opt);
                 self.background.destroy();
+                // remove skip-intro button
+                try {
+                    if (self.skipButton && self.skipButton.parentNode) {
+                        self.skipButton.parentNode.removeChild(self.skipButton);
+                    }
+                    self.skipButton = null;
+                } catch (e) { /* ignore */ }
                 // clean up event listeners
                 window.onresize = null;
                 window.removeEventListener("blur", blurCallback);

@@ -102,6 +102,26 @@ function launchOSU(osu, beatmapid, version) {
   var gameLoop;
   // set quit callback
   window.quitGame = function () {
+    // Hard-stop any gameplay audio and preview <audio> elements so
+    // quitting without reload never leaves sound playing/desynced.
+    try {
+      if (window.playback && window.playback.osu && window.playback.osu.audio) {
+        var a = window.playback.osu.audio;
+        if (typeof a.stop === "function") a.stop();
+        else if (typeof a.pause === "function") a.pause();
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      let audios = document.getElementsByTagName("audio");
+      // live collection: copy first
+      let list = Array.prototype.slice.call(audios);
+      for (let i = 0; i < list.length; ++i) {
+        try {
+          if (list[i].softstop) list[i].softstop();
+          else { try { list[i].pause(); } catch (e) {} try { list[i].remove(); } catch (e) {} }
+        } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* ignore */ }
     // this shouldn't be called before playback is cleaned up
     // restore webpage state
     pGameArea.setAttribute("hidden", "");

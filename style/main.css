@@ -59,6 +59,14 @@ canvas {
   margin: 0;
   transform: translateZ(0);
   /* Promote compositing for smoother animations */
+  /* Prevent browser touch gestures (scroll/zoom) from swallowing taps.
+     Missing taps on Chromebooks/touchscreens were partly caused by the
+     browser taking over touchstart before the game saw it. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 
 .game-area.showhwmousemedium {

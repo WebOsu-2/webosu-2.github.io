@@ -45,18 +45,38 @@ window.beatmaplistLoadedCallback = function () {
 				}, {"data-main":"scripts/initgame"});
 				// load Liked list
 				if (window.localforage) {
+					if (!window.liked_sid_set_callbacks) window.liked_sid_set_callbacks = [];
 					localforage.getItem("likedsidset", function(err, item) {
 	                    if (!err) {
-	                    	if (item && item.size)
-	                    		window.liked_sid_set = item;
-	                    	else
-	                    		window.liked_sid_set = new Set();
-	                    	for (let i=0; i<window.liked_sid_set_callbacks.length; ++i)
-	                    		window.liked_sid_set_callbacks[i]();
+	                    	// Migrate legacy Set storage to plain Array (JSON-safe).
+	                    	// Old Set values serialized via localStorage fallback became {},
+	                    	// which wiped favourites. normalizeLikedList is defined in
+	                    	// addbeatmaplist.js when that script has loaded; fall back
+	                    	// to a local minimal normalization otherwise.
+	                    	var normalize = (typeof normalizeLikedList === "function")
+	                    		? normalizeLikedList
+	                    		: function (val) {
+	                    			if (!val) return [];
+	                    			if (typeof Set !== "undefined" && val instanceof Set) return Array.from(val);
+	                    			if (Array.isArray(val)) return val.filter(function (x) { return x || x === 0; });
+	                    			return [];
+	                    		};
+	                    	window.liked_sid_set = normalize(item);
+	                    	// persist migrated form so old corrupt values don't linger
+	                    	try {
+	                    		if (item && !(Array.isArray(item))) {
+	                    			localforage.setItem("likedsidset", window.liked_sid_set, function () {});
+	                    		}
+	                    	} catch (e) { /* ignore */ }
+	                    	var cbs = window.liked_sid_set_callbacks || [];
+	                    	for (let i=0; i<cbs.length; ++i) {
+	                    		try { cbs[i](); } catch (e) { console.error(e); }
+	                    	}
 	                    	window.liked_sid_set_callbacks = [];
 	                    }
 	                    else {
 	                    	console.error("failed loading liked list");
+	                    	window.liked_sid_set = [];
 	                    }
                 	});
 				}

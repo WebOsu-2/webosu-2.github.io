@@ -335,7 +335,7 @@ function setOptionPanel() {
     return v + "%";
   });
   bindrange("audiooffset-range", "audiooffset", function (v) {
-    return v + "ms";
+    return Math.round(Number(v)) + "ms";
   });
   bindcheck("beatmap-hitsound-check", "beatmapHitsound");
 

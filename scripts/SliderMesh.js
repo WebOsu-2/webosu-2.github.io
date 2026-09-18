@@ -99,6 +99,16 @@ define([], function () {
         for (let i = 0; i < curve0.length; ++i)
             if (i === 0 || Math.abs(curve0[i].x - curve0[i - 1].x) > 0.00001 || Math.abs(curve0[i].y - curve0[i - 1].y) > 0.00001)
                 curve.push(curve0[i]);
+        // Degenerate curve (all points coincident): fall back to a tiny
+        // segment so we never emit NaN normals / out-of-bounds indices,
+        // which previously made sliders flicker or disappear.
+        if (curve.length < 2) {
+            let p0 = curve0[0] || { x: 0, y: 0, t: 0 };
+            curve = [
+                { x: p0.x, y: p0.y, t: 0 },
+                { x: p0.x + 0.001, y: p0.y, t: 1 },
+            ];
+        }
 
         let vert = [];
         let index = [];
@@ -113,8 +123,12 @@ define([], function () {
             let dx = x - lx;
             let dy = y - ly;
             let length = Math.hypot(dx, dy);
-            let ox = radius * -dy / length;
-            let oy = radius * dx / length;
+            // Guard against zero-length segments: unguarded division produced
+            // NaN/Infinity normals, corrupting the whole vertex buffer and
+            // making curved portions flicker or vanish.
+            let inv = length > 1e-6 ? radius / length : 0;
+            let ox = -dy * inv;
+            let oy = dx * inv;
 
             vert.push(lx + ox, ly + oy, lt, 1.0);
             vert.push(lx - ox, ly - oy, lt, 1.0);
@@ -153,11 +167,23 @@ define([], function () {
             let dy1 = curve[i].y - curve[i - 1].y;
             let dx2 = curve[i + 1].x - curve[i].x;
             let dy2 = curve[i + 1].y - curve[i].y;
+            // Skip joints on degenerate (zero-length) segments: their
+            // direction is undefined and previously produced NaN arcs.
+            if (Math.hypot(dx1, dy1) < 1e-6 || Math.hypot(dx2, dy2) < 1e-6) continue;
             let t = dx1 * dy2 - dx2 * dy1;
-            if (t > 0)
+            if (t > 0) {
+                // outer (right-side) round join
                 addArc(5 * i, 5 * i - 1, 5 * i + 2);
-            else
+                // inner (left-side) bevel: without this, tight curves show
+                // a wedge-shaped gap ("corner cut off") on the inside.
+                index.push(5 * i, 5 * i + 1, 5 * i - 2);
+            }
+            else if (t < 0) {
                 addArc(5 * i, 5 * i + 1, 5 * i - 2);
+                index.push(5 * i, 5 * i - 1, 5 * i + 2);
+            }
+            // t == 0: straight joint, quads already meet cleanly; adding a
+            // zero-area arc would only risk z-fighting flicker.
         }
         return new PIXI.Geometry().addAttribute('position', vert, 4).addIndex(index);
     }
@@ -236,6 +262,13 @@ define([], function () {
             gl.colorMask(false, false, false, false);
             renderer.state.set(this.state);
             renderer.state.setDepthTest(true);
+            // Use LEQUAL (not LESS/EQUAL) for both passes: adjacent body
+            // quads and joint arcs share edges with identical depth values,
+            // and the outer border sits exactly at depth 1.0 (clear value).
+            // Strict LESS dropped border fragments and strict EQUAL dropped
+            // shared-edge pixels due to interpolation differences, showing
+            // as 1px gaps / cut corners / flicker on curves.
+            gl.depthFunc(gl.LEQUAL);
 
             let glType, indexLength;
             const bind = (geometry) => {
@@ -282,7 +315,7 @@ define([], function () {
             } else {
                 console.error("can't snake both end of slider");
             }
-            gl.depthFunc(gl.EQUAL);
+            gl.depthFunc(gl.LEQUAL);
             gl.colorMask(true, true, true, true);
             if (this.startt === 0.0 && this.endt === 1.0) {
                 gl.drawElements(this.drawMode, indexLength, glType, 0);

@@ -202,16 +202,17 @@
               </div>
             </td>
           </tr>
-          <tr title="Makes the audio offset a certain amount.">
+          <tr title="Shifts hit timing vs audio, in milliseconds. Positive delays hits.">
             <td>
               <div class="option-name">Audio Offset</div>
               <div class="option-control">
-                <input id="audiooffset-range" class="slider" type="range" min="-100" max="100" value="-50" />
+                <input id="audiooffset-range" class="slider" type="range" min="-200" max="200" step="1" value="0" />
                 <div class="range-indicator" id="audiooffset-range-indicator" hidden></div>
               </div>
               <div style="font-size: 0.8em; color: #999; margin-top: 2.2em">
-                Not recommended to use! If you do, please turn off the
-                hitsounds. Go to
+                In milliseconds (ms). Positive = hits judged later.
+                If every map feels early/late, adjust here.
+                Go to
                 <a style="color: #8bc" href="https://bemuse.ninja/?mode=sync">bemuse sync</a>
                 to determine the keyboard delay.
               </div>

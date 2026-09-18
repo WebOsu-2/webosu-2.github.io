@@ -89,6 +89,16 @@ define([], function () {
       }
     );
   }
+  // If the tab was hidden/suspended, the context clock freezes while rAF
+  // stops; resume on visibility so audio and visuals re-sync without a
+  // new tab.
+  try {
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden && audioContext.state === "suspended") {
+        try { audioContext.resume(); } catch (e) {}
+      }
+    });
+  } catch (e) { /* ignore */ }
 
   function OsuAudio(filename, buffer, callback) {
     var self = this;
@@ -106,6 +116,15 @@ define([], function () {
     let t = preprocAudio(filename, buffer);
     if (t.startoffset) this.posoffset = t.startoffset;
     if (t.newbuffer) buffer = t.newbuffer;
+    // Compensate for audio output latency (heard audio lags the
+    // AudioContext clock). Without this, hits feel systematically early/late
+    // on high-latency devices (the "every song out of sync in 2.0" reports).
+    try {
+      var outLat = (self.audio.outputLatency || 0) + (self.audio.baseLatency || 0);
+      if (outLat > 0 && outLat < 1) self._outputLatencyMs = outLat * 1000;
+      else self._outputLatencyMs = 0;
+    } catch (e) { self._outputLatencyMs = 0; }
+    if (self._outputLatencyMs) this.posoffset += self._outputLatencyMs;
     console.log("set start offset to", this.posoffset, "ms");
     console.log("you've set global offset to", game.globalOffset || 0, "ms");
     this.posoffset += game.globalOffset || 0;
@@ -152,7 +171,21 @@ define([], function () {
     this.play = function play(wait = 0) {
       if (self.audio.state === "suspended") {
         console.warn("Audio suspended. Waiting for touchstart.");
-        self.audio.resume();
+        try { self.audio.resume(); } catch (e) { /* ignore */ }
+      }
+      // If resuming from a pause during lead-in (position < 0),
+      // convert the negative position back into a scheduled wait so
+      // audio and visuals stay in sync.
+      if (!(wait > 0) && self.position < 0) {
+        wait = -self.position * 1000;
+      }
+      // stop any leaked previous source before starting a new one
+      // (prevents overlapping/echoing audio that required a new tab to fix)
+      if (self.source) {
+        try { self.source.onended = null; } catch (e) {}
+        try { self.source.stop(); } catch (e) {}
+        try { self.source.disconnect(); } catch (e) {}
+        self.source = null;
       }
       self.playing = true;
       self.source = self.audio.createBufferSource();
@@ -167,16 +200,70 @@ define([], function () {
           0
         );
       } else {
-        self.source.start(0, self.position);
+        self.source.start(0, Math.max(0, self.position));
       }
+    };
+
+    this.stop = function stop() {
+      try {
+        if (self.source) {
+          try { self.source.onended = null; } catch (e) {}
+          try { self.source.stop(); } catch (e) {}
+          try { self.source.disconnect(); } catch (e) {}
+        }
+      } catch (e) { /* ignore */ }
+      self.source = null;
+      self.playing = false;
+    };
+
+    // Jump audio clock to ms (used by the Skip-intro button).
+    this.skipTo = function skipTo(ms) {
+      if (!self.decoded) return false;
+      var sec = Math.max(0, ms / 1000);
+      try {
+        if (sec >= self.decoded.duration) return false;
+      } catch (e) { /* ignore duration check */ }
+      var wasPlaying = self.playing;
+      try {
+        if (self.source) {
+          try { self.source.onended = null; } catch (e) {}
+          try { self.source.stop(); } catch (e) {}
+          try { self.source.disconnect(); } catch (e) {}
+        }
+      } catch (e) { /* ignore */ }
+      self.source = null;
+      self.position = sec;
+      if (wasPlaying) {
+        try {
+          self.playing = true;
+          self.source = self.audio.createBufferSource();
+          self.source.playbackRate.value = self.playbackRate;
+          self.source.buffer = self.decoded;
+          self.source.connect(self.gain);
+          self.started = self.audio.currentTime;
+          self.source.start(0, sec);
+        } catch (e) {
+          console.error("skipTo failed", e);
+          return false;
+        }
+      }
+      return true;
     };
 
     // return value true: success
     this.pause = function pause() {
-      if (!self.playing || self._getPosition() <= 0) return false;
-      self.position +=
-        (self.audio.currentTime - self.started) * self.playbackRate;
-      self.source.stop();
+      if (!self.playing) return false;
+      try {
+        self.position = self._getPosition();
+      } catch (e) { self.position = self.position || 0; }
+      try {
+        if (self.source) {
+          try { self.source.onended = null; } catch (e) {}
+          try { self.source.stop(); } catch (e) {}
+          try { self.source.disconnect(); } catch (e) {}
+        }
+      } catch (e) { /* ignore */ }
+      self.source = null;
       self.playing = false;
       return true;
     };
