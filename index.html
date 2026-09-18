@@ -163,9 +163,9 @@
       }
     }
     // new
-    addBeatmapList("https://api.sayobot.cn/beatmaplist?0=20&1=0&2=2&5=1",
-      document.getElementById("beatmap-list-new"),
-      function (t) { return (t.modes & 1) != 0; }, 4);
+    function stdOnly(t) { return (t.modes & 1) != 0; }
+    addBeatmapKind("latest", document.getElementById("beatmap-list-new"),
+      { limit: 20, filter: stdOnly, maxsize: 4 });
     // random
     function genRandomList() {
       // clear list
@@ -173,12 +173,13 @@
 
       // fill list
       let randstart = Math.floor(Math.random() * 20000);
-      addBeatmapList("https://api.sayobot.cn/beatmaplist?0=10&1=" + randstart + "&2=1&5=1", list,
-        function (t) { while (list.firstChild) list.removeChild(list.firstChild); return (t.modes & 1) != 0; }, 4);
+      addBeatmapKind("random", list,
+        { limit: 10, offset: randstart, maxsize: 4, filter: function (t) { while (list.firstChild) list.removeChild(list.firstChild); return (t.modes & 1) != 0; } });
     }
     genRandomList();
     // hot
-    addBeatmapList("https://api.sayobot.cn/beatmaplist?0=4&1=0&2=1&5=1", document.getElementById("beatmap-list-hot"));
+    addBeatmapKind("popular", document.getElementById("beatmap-list-hot"),
+      { limit: 4 });
     // liked
     if (window.localforage) {
       window.localforage.getItem("likedsidset", function (err, val) {

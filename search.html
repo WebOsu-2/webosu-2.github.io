@@ -110,10 +110,8 @@
         moreBtn.style.display = "none";
         return;
       }
-      // search keyword (must be URL-encoded: spaces/symbols broke the API url)
-      var q = encodeURIComponent(keyword);
       var pager = createBeatmapPager(listEl, moreBtn, function (off) {
-        return "https://api.sayobot.cn/beatmaplist?0=20&1=" + off + "&2=4&3=" + q + "&5=1";
+        return buildListUrl("search", off, { limit: 20, keyword: keyword });
       });
       pager.loadMore();
     })();

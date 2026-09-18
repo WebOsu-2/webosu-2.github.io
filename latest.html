@@ -99,7 +99,7 @@
       var pager = createBeatmapPager(
         document.getElementById("beatmap-list"),
         document.getElementById("btnmore"),
-        function (off) { return "https://api.sayobot.cn/beatmaplist?0=20&1=" + off + "&2=2&5=1"; }
+        function (off) { return buildListUrl("latest", off, { limit: 20 }); }
       );
       pager.loadMore();
     })();

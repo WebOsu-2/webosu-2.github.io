@@ -1219,6 +1219,23 @@ progress.failed::-webkit-progress-value {
   padding-bottom: 3px;
 }
 
+.beatmapvideo {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(120, 40, 160, 0.75);
+  color: #fff;
+  font-weight: bold;
+  font-size: 11px;
+  text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.7);
+  border-radius: 12px;
+  padding-left: 8px;
+  padding-right: 8px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  letter-spacing: 1px;
+}
+
 .beatmapauthor {
   padding-left: 10px;
   color: #444;

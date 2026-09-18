@@ -47,11 +47,11 @@ test("pager: loads pages, hides button at end, no-ops after", async () => {
   const list = mklist(), btn = H.makeElement("div");
   btn.innerText = "Load more";
   const pager = createBeatmapPager(list, btn, pagerUrl);
-  H.eq(await pager.loadMore(), 20, "first page");
+  H.eq((await pager.loadMore()).count, 20, "first page");
   H.eq(btn.innerText, "Load more", "button idle again");
-  H.eq(await pager.loadMore(), 5, "short page");
+  H.eq((await pager.loadMore()).count, 5, "short page");
   H.eq(btn.style.display, "none", "button hidden at end");
-  H.eq(await pager.loadMore(), 0, "no-op after end");
+  H.eq((await pager.loadMore()).count, 0, "no-op after end");
 });
 
 test("pager: transport error keeps offset and offers Retry", async () => {
@@ -59,9 +59,11 @@ test("pager: transport error keeps offset and offers Retry", async () => {
   window.liked_sid_set = [];
   const list = mklist(), btn = H.makeElement("div");
   const pager = createBeatmapPager(list, btn, pagerUrl);
-  H.eq(await pager.loadMore(), -1, "error code");
+  const e1 = await pager.loadMore();
+  H.eq(e1.count, -1, "error code");
   H.eq(btn.innerText, "Retry", "retry label");
-  H.eq(await pager.loadMore(), 20, "retry re-requests same offset");
+  const e2 = await pager.loadMore();
+  H.eq(e2.count, 20, "retry re-requests same offset");
   H.eq(btn.innerText, "Load more", "label restored");
 });
 
@@ -74,8 +76,8 @@ test("pager: reset() invalidates in-flight stale responses", async () => {
   await new Promise((r) => setTimeout(r, 5));
   const fresh = pager.reset(); // clears + reloads (genre switch)
   const [a, b] = await Promise.all([slow, fresh]);
-  H.eq(a, 0, "stale load yields nothing");
-  H.eq(b, 20, "fresh load populates");
+  H.eq(a.count, 0, "stale load yields nothing");
+  H.eq(b.count, 20, "fresh load populates");
   H.eq(list.children.length, 20, "no interleaved duplicates");
 });
 
@@ -90,7 +92,7 @@ test("pager: one malformed entry does not kill the page", async () => {
   window.liked_sid_set = [];
   const list = mklist(), btn = H.makeElement("div");
   const pager = createBeatmapPager(list, btn, pagerUrl, 20);
-  const n = await pager.loadMore();
+  const n = (await pager.loadMore()).count;
   H.eq(n, 2, "two good boxes survive the bad entry");
   H.eq(list.children.length, 2, "both appended");
 });

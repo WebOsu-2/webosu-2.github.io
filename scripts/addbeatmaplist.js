@@ -334,6 +334,15 @@ var NSaddBeatmapList = {
         pBeatmapCover.width = 130;
         pBeatmapCover.height = 130;
         pBeatmapApproved.innerText = approvedText(map.approved);
+        // little "VIDEO" label for beatmaps shipping a background video
+        // (flag only known for providers exposing it, e.g. Mino)
+        if (map.video) {
+            let pBeatmapVideo = document.createElement("div");
+            pBeatmapVideo.className = "beatmapvideo";
+            pBeatmapVideo.innerText = "VIDEO";
+            pBeatmapVideo.title = "This beatmap has a background video";
+            pBeatmapBox.appendChild(pBeatmapVideo);
+        }
         if (list) {
             list.appendChild(pBeatmapBox);
         }
@@ -414,12 +423,31 @@ var NSaddBeatmapList = {
 
         try {
             const response = await fetch(url);
+            if (!response.ok) throw new Error("HTTP " + response.status);
             const res = await response.json();
-            NSaddBeatmapList.addMoreInfo(box, res.data);
+            NSaddBeatmapList.addMoreInfo(box, currentProviders().browse.normalizeDetails(res));
         } catch (error) {
             console.error("Error fetching additional info for beatmap:", error);
         }
     }
+}
+
+// Parses genre/lang selector values like "2+64+256" into bitmask sums.
+// (The old code eval()'d these attributes; Number() alone returns NaN.)
+function parseMaskSum(v) {
+    if (v === null || v === undefined || v === "") return null;
+    if (typeof v === "number") return Number.isFinite(v) ? v : null;
+    let sum = 0, any = false;
+    const parts = String(v).split("+");
+    for (let i = 0; i < parts.length; ++i) {
+        const p = parts[i].trim();
+        if (!p) continue;
+        const n = Number(p);
+        if (!Number.isFinite(n)) return null;
+        sum += n;
+        any = true;
+    }
+    return any ? sum : null;
 }
 
 // async
@@ -428,15 +456,21 @@ var NSaddBeatmapList = {
 // list: DOM element to insert beatmaps into
 // filter, maxsize: does't apply if not specified
 // isCancelled: optional () => bool; when true after the list fetch, nothing
-//   is appended and -2 is returned (used to drop stale paged responses)
-// returns: number of boxes appended, -1 on transport error, -2 if cancelled
+//   is appended and {count:0, end:false, cancelled:true} is returned
+// listOpts: optional { kind, offset, limit, fetchSize, genre, lang } describing
+//   the request for provider normalization (Mino sorts/filters client-side).
+// returns: { count, end } — boxes appended, and whether the provider reports
+//   end-of-data. On transport error appends a note and returns {count:-1}.
 // Note that some beatmaps may not contain std mode, so we request more maps than we need
-async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
+async function addBeatmapList(listurl, list, filter, maxsize, isCancelled, listOpts) {
     if (!list) list = document.getElementById("beatmap-list");
     if (!list) {
         console.error("addBeatmapList: no target list element");
-        return -1;
+        return { count: -1, end: false };
     }
+    const browse = currentProviders().browse;
+    const opts = listOpts || {};
+    const limit = maxsize || opts.limit || 20;
 
     // request beatmap pack list
     let res;
@@ -449,28 +483,40 @@ async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
         let note = document.createElement("div");
         note.innerText = "Could not load beatmaps (network error). Please retry.";
         list.appendChild(note);
-        return -1;
+        return { count: -1, end: false };
     }
-    if (!res || !Array.isArray(res.data)) {
-        console.error("Error fetching beatmap list: bad response");
-        return -1;
+    let sets;
+    try {
+        sets = browse.normalizeList(res, {
+            offset: opts.offset || 0,
+            limit: limit,
+            fetchSize: opts.fetchSize || limit,
+            kind: opts.kind,
+            genre: opts.genre,
+            lang: opts.lang,
+        });
+    } catch (error) {
+        console.error("Error normalizing beatmap list:", error);
+        return { count: -1, end: false };
     }
-    if (isCancelled && isCancelled()) return -2;
-    const box = [];
+    if (!Array.isArray(sets)) sets = [];
+    const end = browse.rawCount(res) < (opts.fetchSize || limit);
+    if (isCancelled && isCancelled()) return { count: 0, end: end, cancelled: true };
+    let rows = sets;
 
-    if (filter && res.data) {
-        res.data = res.data.filter(filter);
+    if (filter) {
+        rows = rows.filter(filter);
     }
-    if (maxsize && res.data) {
-        res.data = res.data.slice(0, maxsize);
+    if (maxsize) {
+        rows = rows.slice(0, maxsize);
     }
 
     // add widget to webpage as soon as list is fetched.
     // One malformed entry must not kill the whole page (per-box guard).
     const items = [];
-    for (let i = 0; i < res.data.length; ++i) {
+    for (let i = 0; i < rows.length; ++i) {
         try {
-            items.push({ data: res.data[i], box: NSaddBeatmapList.addpreviewbox(res.data[i], list) });
+            items.push({ data: rows[i], box: NSaddBeatmapList.addpreviewbox(rows[i], list) });
         } catch (e) {
             console.error("Skipping malformed beatmap entry:", e);
         }
@@ -510,16 +556,40 @@ async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
         window.beatmaplistLoadedCallback = null;
         // to make sure it's called only once
     }
-    return items.length;
+    return { count: items.length, end: end };
+}
+
+// Convenience: build the provider URL for a list kind and fetch it.
+// kind: latest | popular | search | genre | random
+// o: { limit, offset, keyword, genre, lang, filter, maxsize, isCancelled, list }
+function addBeatmapKind(kind, list, o) {
+    o = o || {};
+    if (!list) list = document.getElementById("beatmap-list");
+    const r = buildListUrl(kind, o.offset || 0, {
+        limit: o.limit || 20,
+        keyword: o.keyword,
+        genre: o.genre,
+        lang: o.lang,
+    });
+    return addBeatmapList(r.url, list, o.filter, o.maxsize, o.isCancelled, {
+        kind: kind,
+        offset: o.offset || 0,
+        limit: o.limit || 20,
+        fetchSize: r.fetchSize,
+        genre: o.genre,
+        lang: o.lang,
+    });
 }
 
 // ---- Shared paginated list helper ----
 // Replaces the copy-pasted `var cur / btnmore.onclick` blocks on every list
 // page. Handles loading/disabled states, end-of-list, errors ("Retry"),
 // double-click storms and stale responses after reset (genre switches).
-// buildUrl(offset) must return the API url for the given page offset.
-// Returns { loadMore, reset }.
-function createBeatmapPager(listEl, moreBtn, buildUrl, pageSize) {
+// buildRequest(offset) must return { url, opts } where opts carries
+// { kind, limit, fetchSize, genre, lang } for provider normalization
+// (a plain url string is also accepted for back-compat: opts={offset}).
+// Returns { loadMore, reset } where loadMore resolves { count, end }.
+function createBeatmapPager(listEl, moreBtn, buildRequest, pageSize) {
     pageSize = pageSize || 20;
     if (!listEl) listEl = document.getElementById("beatmap-list");
     let offset = 0;
@@ -546,31 +616,43 @@ function createBeatmapPager(listEl, moreBtn, buildUrl, pageSize) {
         if (moreBtn && moreBtn.dataset) moreBtn.dataset.error = on ? "1" : "";
     }
     async function loadMore() {
-        if (loading || ended || !listEl) return 0;
+        if (loading || ended || !listEl) return { count: 0, end: ended };
         loading = true;
         setError(false);
         paintBtn();
         const my = epoch;
-        let n;
+        let req = buildRequest(offset);
+        if (typeof req === "string") req = { url: req, opts: {} };
+        req.opts = req.opts || {};
+        if (req.opts.offset === undefined) req.opts.offset = offset;
+        if (req.opts.limit === undefined) req.opts.limit = pageSize;
+        // fetchSize may exceed the page (Mino popular fetches 100-row
+        // batches and slices 20); buildListUrl reports it via req.fetchSize.
+        if (req.opts.fetchSize === undefined) {
+            req.opts.fetchSize = (req.fetchSize !== undefined) ? req.fetchSize : pageSize;
+        }
+        let r;
         try {
-            n = await addBeatmapList(buildUrl(offset), listEl, null, null, function () { return my !== epoch; });
+            r = await addBeatmapList(req.url, listEl, null, null, function () { return my !== epoch; }, req.opts);
         } catch (e) {
             console.error(e);
-            n = -1;
+            r = { count: -1, end: false };
         }
-        if (my !== epoch) return 0; // superseded by reset(); new load owns the list
+        if (my !== epoch) return { count: 0, end: false }; // superseded by reset()
         loading = false;
-        if (n === -2) return 0; // cancelled (shouldn't happen post-check, stay idle)
+        if (r && r.cancelled) return { count: 0, end: false };
+        const n = (r && typeof r.count === "number") ? r.count : 0;
+        const end = !!(r && r.end);
         if (n < 0) {
             // transport error: stay on the same offset so Retry re-requests it
             setError(true);
             paintBtn();
-            return n;
+            return { count: n, end: false };
         }
         offset += pageSize;
-        if (n < pageSize) ended = true; // short page => end of data
+        if (end || n < pageSize) ended = true;
         paintBtn();
-        return n;
+        return { count: n, end: ended };
     }
     function reset() {
         epoch++; // invalidate in-flight loads
@@ -601,7 +683,8 @@ function addBeatmapSid(sid, list) {
             return response.json();
         })
         .then(res => {
-            if (!res || res.status === -1 || !res.data) {
+            const set = currentProviders().browse.normalizeSet(res);
+            if (!set || set.status === -1 || !set.data) {
                 console.warn("Beatmap not found with sid", sid);
                 return null;
             }

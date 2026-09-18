@@ -43,6 +43,11 @@ function setOptionPanel() {
     audiooffset: 0,
     beatmapHitsound: true,
 
+    // beatmap API providers (see scripts/config.js)
+    apiBrowsing: "sayobot",
+    apiDownload: "sayobot",
+    backgroundVideo: false,
+
     easy: false,
     daycore: false,
     hardrock: false,

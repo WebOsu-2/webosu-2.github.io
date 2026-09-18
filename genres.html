@@ -120,11 +120,8 @@
   <script>
     let btns = document.getElementsByClassName("selitem");
     function attrNum(el, name) {
-      // attributes hold small integer ids (or are absent); never eval them.
-      let v = el.getAttribute(name);
-      if (v === null || v === "") return null;
-      let n = Number(v);
-      return Number.isFinite(n) ? n : null;
+      // attributes hold ids or "+"-separated bitmask sums ("2+64+256").
+      return parseMaskSum(el.getAttribute(name));
     }
     let curgenre = 1;
     let curlang = 1;
@@ -134,8 +131,7 @@
       document.getElementById("beatmap-list"),
       document.getElementById("btnmore"),
       function (off) {
-        return "https://api.sayobot.cn/beatmaplist?0=20&1=" + off +
-          "&2=4&5=1&7=" + curgenre + "&8=" + curlang;
+        return buildListUrl("genre", off, { limit: 20, genre: curgenre, lang: curlang });
       }
     );
     function search(genre, lang) {
