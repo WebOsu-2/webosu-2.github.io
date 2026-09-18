@@ -143,6 +143,12 @@ function installDom() {
 }
 
 // ---------- AudioContext stub ----------
+// NOTE: modules like osu-audio capture ONE context at load time, and test
+// files share a process, so every file must serve the same singleton or
+// results depend on file load order. Pattern:
+//   if (!global.__audioCtxStub) global.__audioCtxStub = makeAudioContextStub(...);
+//   global.AudioContext = function () { return global.__audioCtxStub; };
+// then configure global.__audioCtxStub per test (currentTime/latency).
 function makeAudioContextStub(opts = {}) {
   const ctx = {
     state: opts.state || "running",

@@ -7,7 +7,8 @@ const H = require("./helpers");
 global.window = {};
 global.document = { body: { addEventListener() {} }, addEventListener() {}, hidden: false };
 global.game = { globalOffset: 0 };
-global.AudioContext = H.makeAudioContextStub;
+if (!global.__audioCtxStub) global.__audioCtxStub = H.makeAudioContextStub({ currentTime: 0 });
+global.AudioContext = function () { return global.__audioCtxStub; };
 
 const OsuAudio = H.loadAmd("scripts/osu-audio.js", {});
 const exposed = H.loadAmd("scripts/osu.js", { "osu-audio": OsuAudio }, {
