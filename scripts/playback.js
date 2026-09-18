@@ -501,6 +501,11 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                     }
                     // Use the sprite directly as the background.
                     self.background = sprite;
+                    // a live video layer replaces the cover (it may have
+                    // become active while this texture was loading)
+                    try {
+                        if (self.bgVideo) self.background.visible = false;
+                    } catch (e) { /* ignore */ }
                     self.background.anchor.set(0.5);
                     self.background.x = window.innerWidth / 2;
                     self.background.y = window.innerHeight / 2;
@@ -542,6 +547,14 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             this.setupVideoBG = function () {
                 self.bgVideo = null;
                 self._videoTimer = null;
+                // The canvas clears opaque every frame; without this the DOM
+                // video underneath can never be seen. Default back to opaque
+                // (a previous retry may have left it transparent).
+                try {
+                    if (window.app && window.app.renderer && window.app.renderer.background) {
+                        window.app.renderer.background.alpha = 1;
+                    }
+                } catch (e) { /* ignore */ }
                 if (!self.game.backgroundVideo) return;
                 if (!self.track.video || !self.track.video.filename) return;
                 if (!self.osu || typeof self.osu.getVideoFile !== "function") return;
@@ -606,6 +619,16 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                                 // map ms -> audio clock (DT/NC scale the chart)
                                 offset: (self.track.video.offset || 0) / (self.timeRate || 1),
                             };
+                            // reveal: transparent canvas + hide the cover
+                            // sprite, which would otherwise paint over it.
+                            try {
+                                if (window.app && window.app.renderer && window.app.renderer.background) {
+                                    window.app.renderer.background.alpha = 0;
+                                }
+                            } catch (e) { /* ignore */ }
+                            try {
+                                if (self.background) self.background.visible = false;
+                            } catch (e) { /* ignore */ }
                             my.syncVideoBG(true);
                         } catch (e) { console.error("video setup failed", e); }
                     });
