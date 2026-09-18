@@ -148,7 +148,18 @@ function launchOSU(osu, beatmapid, version) {
   };
 
   // load playback
-  var playback = new Playback(window.game, osu, osu.tracks[trackid]);
+  var playback;
+  try {
+    playback = new Playback(window.game, osu, osu.tracks[trackid]);
+  } catch (e) {
+    console.error("playback init failed:", e);
+    try {
+      if (typeof showErrorToast === "function") showErrorToast("Could not start this difficulty (" + (e && e.message ? e.message : "empty track") + ").");
+      else alert("Could not start this difficulty.");
+    } catch (err) {}
+    try { if (window.quitGame) window.quitGame(); } catch (err) {}
+    return;
+  }
   game.scene = playback;
   playback.onload = function () {
     // stop beatmap preview

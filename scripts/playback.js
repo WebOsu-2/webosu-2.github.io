@@ -31,6 +31,9 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
             _.each(self.track.hitObjects, function (o) {
                 self.hits.push(Object.assign({}, o));
             });
+            if (!self.hits.length) {
+                throw new Error("This difficulty has no playable hit objects.");
+            }
             self.offset = 0;
             self.currentHitIndex = 0; // index for all hit objects
             self.ended = false;

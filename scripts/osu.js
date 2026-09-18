@@ -199,10 +199,37 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
                 }
             }
             // Make some corrections
-            this.general.PreviewTime /= 10;
-            if (this.general.PreviewTime > this.hitObjects[0].time) {
-                this.general.PreviewTime = 0;
-            } // WTF is this
+            if (typeof this.general.PreviewTime === "number") {
+                this.general.PreviewTime /= 10;
+                if (this.hitObjects.length && this.general.PreviewTime > this.hitObjects[0].time) {
+                    this.general.PreviewTime = 0;
+                }
+            } else {
+                this.general.PreviewTime = -1;
+            }
+            // osu! defaults for missing fields (old/partial maps)
+            if (typeof this.general.StackLeniency !== "number" || isNaN(this.general.StackLeniency))
+                this.general.StackLeniency = 0.7;
+            if (typeof this.general.Mode !== "number")
+                this.general.Mode = 0;
+            if (!this.difficulty.SliderMultiplier || !(this.difficulty.SliderMultiplier > 0))
+                this.difficulty.SliderMultiplier = 1.4;
+            if (!this.difficulty.SliderTickRate || !(this.difficulty.SliderTickRate > 0))
+                this.difficulty.SliderTickRate = 1;
+            if (this.timingPoints.length === 0) {
+                console.warn("[preproc]", "no timing points, injecting 120bpm default");
+                this.timingPoints.push({
+                    offset: 0,
+                    millisecondsPerBeat: 500,
+                    meter: 4,
+                    sampleSet: 0,
+                    sampleIndex: 0,
+                    volume: 100,
+                    uninherited: 1,
+                    kaiMode: 0,
+                    trueMillisecondsPerBeat: 500
+                });
+            }
 
             // complete with default values
             if (this.colors.length === 0) {
@@ -248,8 +275,13 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
                 }
                 // spinners already have an endTime
             }
-            // just give an estimated track length
-            this.length = Math.round((this.hitObjects[this.hitObjects.length-1].endTime)/1000+1.5);
+            if (this.hitObjects.length === 0) {
+                console.error("[preproc]", "track has no hit objects");
+                this.length = 0;
+            } else {
+                // just give an estimated track length
+                this.length = Math.round((this.hitObjects[this.hitObjects.length-1].endTime)/1000+1.5);
+            }
 
             calculateCurve(this);
             // stack hitobjects
