@@ -276,7 +276,9 @@ function showLiveCommit() {
         const raw = window.localStorage && window.localStorage.getItem("livecommit");
         if (raw) {
             const cached = JSON.parse(raw);
-            if (cached && cached.sha && Date.now() - cached.time < 3600 * 1000) {
+            // short TTL: "clear cache" does not clear localStorage, so a
+            // long cache keeps showing an older commit and looks broken.
+            if (cached && cached.sha && Date.now() - cached.time < 600 * 1000) {
                 render(cached.sha);
                 return;
             }
