@@ -70,34 +70,51 @@
         Announcement: This site is still under development. If you encounter
         any issues, read <a href="faq.html">the FAQ</a>. Now ad-free again!
       </div>
-      <br />
+
+      <div class="hero">
+        <h1>Find your next beatmap</h1>
+        <p>Rhythm is just a search away — no downloads, play in your browser.</p>
+        <form class="hero-search" action="search.html">
+          <input type="text" name="q" placeholder="Search songs, artists, mappers…" aria-label="Search beatmaps" />
+          <button type="submit">Search</button>
+        </form>
+      </div>
+
       <div class="index-area">
-        <a onclick="genRandomList()" class="more" style="cursor:pointer;">Get new random Beatmaps</a>
-        <h2>Random Beatmaps<h2>
-            <hr />
-            <div class="beatmap-list" id="beatmap-list-random">
-              <!-- to be filled in script -->
-            </div>
+        <div class="section-head">
+          <h2>Random Beatmaps</h2>
+          <a onclick="genRandomList()" class="more" style="cursor:pointer;">Shuffle ⟳</a>
+        </div>
+        <hr />
+        <div class="beatmap-list" id="beatmap-list-random">
+          <!-- to be filled in script -->
+        </div>
       </div>
       <div class="index-area">
-        <h2>Latest Beatmaps</h2>
-        <a href="latest.html" class="more">View more latest beatmaps</a>
+        <div class="section-head">
+          <h2>Latest Beatmaps</h2>
+          <a href="latest.html" class="more">View more →</a>
+        </div>
         <hr />
         <div class="beatmap-list" id="beatmap-list-new">
           <!-- to be filled in script -->
         </div>
       </div>
       <div class="index-area">
-        <h2>Favourited Beatmaps</h2>
-        <a href="favourites.html" class="more">View more favourited beatmaps</a>
+        <div class="section-head">
+          <h2>Favourited Beatmaps</h2>
+          <a href="favourites.html" class="more">View more →</a>
+        </div>
         <hr />
         <div class="beatmap-list" id="beatmap-list-liked">
           <!-- to be filled in script -->
         </div>
       </div>
       <div class="index-area">
-        <h2>Popular Beatmaps</h2>
-        <a href="popular.html" class="more">View more popular beatmaps</a>
+        <div class="section-head">
+          <h2>Popular Beatmaps</h2>
+          <a href="popular.html" class="more">View more →</a>
+        </div>
         <hr />
         <div class="beatmap-list" id="beatmap-list-hot">
           <!-- to be filled in script -->

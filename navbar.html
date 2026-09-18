@@ -1,28 +1,27 @@
-<nav>
-  <a href="index.html" class="brand">WebOsu 2.0!</a>
-  
-  <div class="nav-center">
-    <div class="nav-buttons-left">
-      <a href="latest.html" class="pseudo button">Latest</a>
-      <a href="popular.html" class="pseudo button">Popular</a>
-      <a href="genres.html" class="pseudo button">Genres</a>
-    </div>
-    
-    <div class="nav-search">
-      <form action="search.html">
-        <input type="text" name="q" placeholder="Beatmap name or Set ID" />
-        <input type="image" class="search-button" src="research.svg" />
-      </form>
-    </div>
-    
-    <div class="nav-buttons-right">
-      <a href="favourites.html" class="pseudo button">Favourites</a>
-      <a href="faq.html" class="pseudo button">FAQ</a>
-      <a href="settings.html" class="pseudo button">Settings</a>
-    </div>
+<nav class="topbar">
+  <a href="index.html" class="brand" aria-label="webosu home">
+    <span class="brand-dot" aria-hidden="true"></span><span>webosu</span><span class="brand-2">2.0</span>
+  </a>
+
+  <div class="topbar-links">
+    <a href="index.html">Home</a>
+    <a href="latest.html">Latest</a>
+    <a href="popular.html">Popular</a>
+    <a href="genres.html">Genres</a>
+    <a href="favourites.html">Favourites</a>
+    <a href="history.html">History</a>
+    <a href="faq.html">FAQ</a>
   </div>
-  
-  <div class="nav-tool">
-    <a onclick="document.documentElement.requestFullscreen();" class="pseudo button">Go to full screen</a>
+
+  <div class="nav-search topbar-search">
+    <form action="search.html">
+      <input type="text" name="q" placeholder="Search beatmaps…" aria-label="Search beatmaps" />
+      <input type="image" class="search-button" src="research.svg" alt="Search" />
+    </form>
+  </div>
+
+  <div class="topbar-actions">
+    <a href="settings.html" class="icon-btn" title="Settings" aria-label="Settings">⚙</a>
+    <a onclick="document.documentElement.requestFullscreen();" class="icon-btn" title="Fullscreen" aria-label="Fullscreen">⛶</a>
   </div>
 </nav>
