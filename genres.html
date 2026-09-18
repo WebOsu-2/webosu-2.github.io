@@ -126,30 +126,22 @@
       let n = Number(v);
       return Number.isFinite(n) ? n : null;
     }
-    function search(genre, lang) {
-      // clear list
-      let list = document.getElementById("beatmap-list");
-      while (list.firstChild) {
-        list.removeChild(list.firstChild);
+    let curgenre = 1;
+    let curlang = 1;
+    // single pager for the page: reset() clears the list and invalidates
+    // in-flight responses, so fast genre switching can't interleave pages.
+    let pager = createBeatmapPager(
+      document.getElementById("beatmap-list"),
+      document.getElementById("btnmore"),
+      function (off) {
+        return "https://api.sayobot.cn/beatmaplist?0=20&1=" + off +
+          "&2=4&5=1&7=" + curgenre + "&8=" + curlang;
       }
-      addBeatmapList(
-        "https://api.sayobot.cn/beatmaplist?0=20&1=0&2=4&5=1&7=" +
-        genre +
-        "&8=" +
-        lang
-      );
-      var cur = 20;
-      document.getElementById("btnmore").onclick = function () {
-        addBeatmapList(
-          "https://api.sayobot.cn/beatmaplist?0=20&1=" +
-          cur +
-          "&2=4&5=1&7=" +
-          genre +
-          "&8=" +
-          lang
-        );
-        cur += 20;
-      };
+    );
+    function search(genre, lang) {
+      curgenre = genre;
+      curlang = lang;
+      pager.reset();
       // update buttons state
       for (let i = 0; i < btns.length; ++i) {
         let g = attrNum(btns[i], "genre");
@@ -161,8 +153,6 @@
         }
       }
     }
-    let curgenre = 1;
-    let curlang = 1;
     search(curgenre, curlang);
     for (let i = 0; i < btns.length; ++i) {
       btns[i].onclick = function () {

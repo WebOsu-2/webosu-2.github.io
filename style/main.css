@@ -1054,6 +1054,19 @@ progress.finished::-webkit-progress-value {
   background: #6cf;
 }
 
+progress.failed::-moz-progress-bar {
+  background: #e33;
+}
+
+progress.failed::-webkit-progress-value {
+  background: #e33;
+}
+
+.button.disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .text {
   line-height: 1.8em;
 }

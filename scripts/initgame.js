@@ -1,8 +1,20 @@
 require(["osu", "underscore", "sound", "playback"],
 function(Osu, _, sound, Playback) {
     // check for WebGL
-    if (!PIXI || !PIXI.utils.isWebGLSupported())
-        alert("WebGL is not supported on your device!")
+    if (!PIXI || !PIXI.utils.isWebGLSupported()) {
+        try {
+            var w = document.createElement("div");
+            w.setAttribute("role", "alert");
+            w.innerText = "WebGL is not supported on your device: gameplay is disabled, but browsing still works.";
+            w.style.cssText = "margin:12px;padding:10px 14px;background:rgba(20,16,20,.92);color:#ffd9d9;border:1px solid #b63258;border-radius:10px;";
+            var s = document.getElementById("statuslines");
+            if (s) s.appendChild(w);
+            else document.body.appendChild(w);
+        } catch (e) {
+            alert("WebGL is not supported on your device!")
+        }
+        return;
+    }
     window.Osu = Osu;
     window.Playback = Playback;
     // setup compatible audio context

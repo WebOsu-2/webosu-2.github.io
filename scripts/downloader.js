@@ -187,8 +187,13 @@ function startdownload(box) {
         })
         .catch(error => {
             console.error("Download failed:", error.message);
-            alert("Beatmap download failed. Please retry later.");
             box.downloading = false;
             box.classList.remove("downloading");
+            try {
+                title.innerText = "Download failed — retry later";
+                bar.className = "failed";
+                if (typeof showErrorToast === "function")
+                    showErrorToast("Beatmap download failed. Please retry later.");
+            } catch (e) { /* ignore */ }
         });
 }

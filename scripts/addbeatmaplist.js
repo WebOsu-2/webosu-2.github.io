@@ -180,13 +180,26 @@ function createDifficultyList(boxclicked, event) {
         difficultyItem.onhover = function () {
 
         }
-        difficultyItem.onclick = function (e) {
+        difficultyItem.setAttribute("tabindex", "0");
+        difficultyItem.setAttribute("role", "button");
+        difficultyItem.setAttribute("aria-label", "Play " + boxclicked.data[i].version);
+        difficultyItem.activate = function () {
             // check if ready
             if (!window.scriptReady || !window.soundReady || !window.skinReady || !this.parentElement.parentElement.oszblob) {
                 return;
             }
             launchGame(this.parentElement.parentElement.oszblob, this.data.bid, this.data.version);
-        }
+        };
+        difficultyItem.onclick = function (e) {
+            this.activate();
+        };
+        difficultyItem.onkeydown = function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                this.activate();
+            }
+        };
     }
     difficultyBox.onclick = function (e) {
         e.stopPropagation();
@@ -200,7 +213,18 @@ var NSaddBeatmapList = {
         let icon = document.createElement("div");
         icon.className = "beatmaplike";
         icon.setAttribute("hidden", "");
+        icon.setAttribute("tabindex", "0");
+        icon.setAttribute("role", "button");
+        icon.setAttribute("aria-label", "Favourite beatmap");
         box.appendChild(icon);
+        // keyboard activation mirrors click
+        icon.onkeydown = function (e) {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof icon.onclick === "function") icon.onclick(e);
+            }
+        };
         box.initlike = function () {
             if (!window.liked_sid_set || !box.sid) {
                 return;
@@ -211,10 +235,12 @@ var NSaddBeatmapList = {
             }
             if (likedHas(box.sid)) {
                 icon.classList.add("icon-heart");
+                icon.setAttribute("aria-pressed", "true");
                 icon.onclick = box.undolike;
             }
             else {
                 icon.classList.add("icon-heart-empty");
+                icon.setAttribute("aria-pressed", "false");
                 icon.onclick = box.like;
             }
             icon.removeAttribute("hidden");
@@ -223,6 +249,7 @@ var NSaddBeatmapList = {
             e.stopPropagation();
             likedAdd(box.sid);
             icon.classList.add("hint-liked");
+            icon.setAttribute("aria-pressed", "true");
             icon.onclick = box.undolike;
             icon.classList.remove("icon-heart-empty");
             icon.classList.add("icon-heart");
@@ -234,6 +261,7 @@ var NSaddBeatmapList = {
             icon.classList.remove("icon-heart");
             icon.classList.add("icon-heart-empty");
             icon.classList.remove("hint-liked");
+            icon.setAttribute("aria-pressed", "false");
         }
         if (window.liked_sid_set) {
             box.initlike();
@@ -384,12 +412,15 @@ var NSaddBeatmapList = {
 // listurl: url of api request that returns a list of beatmap packs
 // list: DOM element to insert beatmaps into
 // filter, maxsize: does't apply if not specified
+// isCancelled: optional () => bool; when true after the list fetch, nothing
+//   is appended and -2 is returned (used to drop stale paged responses)
+// returns: number of boxes appended, -1 on transport error, -2 if cancelled
 // Note that some beatmaps may not contain std mode, so we request more maps than we need
-async function addBeatmapList(listurl, list, filter, maxsize) {
+async function addBeatmapList(listurl, list, filter, maxsize, isCancelled) {
     if (!list) list = document.getElementById("beatmap-list");
     if (!list) {
         console.error("addBeatmapList: no target list element");
-        return;
+        return -1;
     }
 
     // request beatmap pack list
@@ -403,12 +434,13 @@ async function addBeatmapList(listurl, list, filter, maxsize) {
         let note = document.createElement("div");
         note.innerText = "Could not load beatmaps (network error). Please retry.";
         list.appendChild(note);
-        return;
+        return -1;
     }
     if (!res || !Array.isArray(res.data)) {
         console.error("Error fetching beatmap list: bad response");
-        return;
+        return -1;
     }
+    if (isCancelled && isCancelled()) return -2;
     const box = [];
 
     if (filter && res.data) {
@@ -456,6 +488,81 @@ async function addBeatmapList(listurl, list, filter, maxsize) {
         window.beatmaplistLoadedCallback = null;
         // to make sure it's called only once
     }
+    return box.length;
+}
+
+// ---- Shared paginated list helper ----
+// Replaces the copy-pasted `var cur / btnmore.onclick` blocks on every list
+// page. Handles loading/disabled states, end-of-list, errors ("Retry"),
+// double-click storms and stale responses after reset (genre switches).
+// buildUrl(offset) must return the API url for the given page offset.
+// Returns { loadMore, reset }.
+function createBeatmapPager(listEl, moreBtn, buildUrl, pageSize) {
+    pageSize = pageSize || 20;
+    if (!listEl) listEl = document.getElementById("beatmap-list");
+    let offset = 0;
+    let loading = false;
+    let ended = false;
+    let epoch = 0;
+    function paintBtn() {
+        if (!moreBtn) return;
+        if (ended) {
+            // hide via display only: never drop the inline width style
+            moreBtn.style.display = "none";
+            return;
+        }
+        moreBtn.style.display = "";
+        if (loading) {
+            moreBtn.innerText = "Loading…";
+            moreBtn.classList.add("disabled");
+        } else {
+            moreBtn.classList.remove("disabled");
+            moreBtn.innerText = (moreBtn.dataset && moreBtn.dataset.error === "1") ? "Retry" : "Load more";
+        }
+    }
+    function setError(on) {
+        if (moreBtn && moreBtn.dataset) moreBtn.dataset.error = on ? "1" : "";
+    }
+    async function loadMore() {
+        if (loading || ended || !listEl) return 0;
+        loading = true;
+        setError(false);
+        paintBtn();
+        const my = epoch;
+        let n;
+        try {
+            n = await addBeatmapList(buildUrl(offset), listEl, null, null, function () { return my !== epoch; });
+        } catch (e) {
+            console.error(e);
+            n = -1;
+        }
+        if (my !== epoch) return 0; // superseded by reset(); new load owns the list
+        loading = false;
+        if (n === -2) return 0; // cancelled (shouldn't happen post-check, stay idle)
+        if (n < 0) {
+            // transport error: stay on the same offset so Retry re-requests it
+            setError(true);
+            paintBtn();
+            return n;
+        }
+        offset += pageSize;
+        if (n < pageSize) ended = true; // short page => end of data
+        paintBtn();
+        return n;
+    }
+    function reset() {
+        epoch++; // invalidate in-flight loads
+        offset = 0;
+        loading = false;
+        ended = false;
+        setError(false);
+        if (listEl) listEl.innerHTML = "";
+        paintBtn();
+        return loadMore();
+    }
+    if (moreBtn) moreBtn.onclick = loadMore;
+    paintBtn();
+    return { loadMore: loadMore, reset: reset };
 }
 
 function addBeatmapSid(sid, list) {

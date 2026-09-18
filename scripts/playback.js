@@ -95,6 +95,9 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                 skipBtn.id = "skip-intro-btn";
                 skipBtn.innerText = "Skip intro »";
                 skipBtn.setAttribute("hidden", "");
+                skipBtn.setAttribute("tabindex", "0");
+                skipBtn.setAttribute("role", "button");
+                skipBtn.setAttribute("aria-label", "Skip intro");
                 skipBtn.style.cssText = "position:fixed;right:24px;bottom:72px;z-index:50;padding:10px 18px;background:rgba(20,20,30,.82);color:#fff;border:2px solid #fff;border-radius:12px;font-size:18px;cursor:pointer;user-select:none;";
                 skipBtn.onclick = function (e) {
                     try { if (e) e.stopPropagation(); } catch (err) {}
@@ -104,6 +107,12 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                         self.osu.audio.skipTo(target);
                     }
                     try { skipBtn.setAttribute("hidden", ""); } catch (err) {}
+                };
+                skipBtn.onkeydown = function (e) {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        skipBtn.onclick(e);
+                    }
                 };
                 document.body.appendChild(skipBtn);
                 self.skipButton = skipBtn;
@@ -238,22 +247,44 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                     let btn_continue = document.getElementById("pausebtn-continue");
                     let btn_retry = document.getElementById("pausebtn-retry");
                     let btn_quit = document.getElementById("pausebtn-quit");
-                    btn_continue.onclick = function () {
+                    // Keyboard operability for the (div-based) pause buttons.
+                    [btn_continue, btn_retry, btn_quit].forEach(function (b) {
+                        if (!b) return;
+                        b.setAttribute("tabindex", "0");
+                        b.setAttribute("role", "button");
+                    });
+                    function keyActivates(handler) {
+                        return function (e) {
+                            if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                handler();
+                            }
+                        };
+                    }
+                    function doContinue() {
                         self.resume();
                         btn_continue.onclick = null;
                         btn_retry.onclick = null;
                         btn_quit.onclick = null;
+                        btn_continue.onkeydown = btn_retry.onkeydown = btn_quit.onkeydown = null;
                     }
-                    btn_retry.onclick = function () {
+                    function doRetry() {
                         self.game.paused = false;
                         menu.setAttribute("hidden", "");
                         self.retry();
                     }
-                    btn_quit.onclick = function () {
+                    function doQuit() {
                         self.game.paused = false;
                         menu.setAttribute("hidden", "");
                         self.quit();
                     }
+                    btn_continue.onclick = doContinue;
+                    btn_retry.onclick = doRetry;
+                    btn_quit.onclick = doQuit;
+                    btn_continue.onkeydown = keyActivates(doContinue);
+                    btn_retry.onkeydown = keyActivates(doRetry);
+                    btn_quit.onkeydown = keyActivates(doQuit);
+                    try { btn_continue.focus(); } catch (e) { /* ignore */ }
                 }
             };
             this.resume = function () {

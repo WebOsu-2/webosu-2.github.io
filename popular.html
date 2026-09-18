@@ -91,14 +91,14 @@
     </div>
   </div>
   <script>
-    addBeatmapList("https://api.sayobot.cn/beatmaplist?0=20&1=0&2=1&5=1");
-    var cur = 20;
-    document.getElementById("btnmore").onclick = function () {
-      addBeatmapList(
-        "https://api.sayobot.cn/beatmaplist?0=20&1=" + cur + "&2=1&5=1"
+    (function () {
+      var pager = createBeatmapPager(
+        document.getElementById("beatmap-list"),
+        document.getElementById("btnmore"),
+        function (off) { return "https://api.sayobot.cn/beatmaplist?0=20&1=" + off + "&2=1&5=1"; }
       );
-      cur += 20;
-    };
+      pager.loadMore();
+    })();
   </script>
 </body>
 

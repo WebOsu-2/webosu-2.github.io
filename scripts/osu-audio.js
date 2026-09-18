@@ -141,9 +141,13 @@ define([], function () {
         },
         function (err) {
           console.log("Error");
-          alert(
-            "Audio decode failed. Please report by filing an issue on Github"
-          );
+          if (typeof showErrorToast === "function") {
+            showErrorToast("Audio decode failed. Please report by filing an issue on Github");
+          } else {
+            alert(
+              "Audio decode failed. Please report by filing an issue on Github"
+            );
+          }
           if (syncStream(node)) {
             console.log("Attempting again");
             decode(node);

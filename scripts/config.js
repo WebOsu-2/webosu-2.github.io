@@ -23,6 +23,23 @@ function getDownloadUrl(sid) {
     return `${BEATMAP_PROVIDER.DOWNLOAD}${sid}`;
 }
 
+// Non-blocking error toast (replaces alert() so background work like
+// downloads/decodes never traps the user in a modal dialog).
+function showErrorToast(msg, ms) {
+    try {
+        var t = document.createElement("div");
+        t.innerText = msg;
+        t.setAttribute("role", "alert");
+        t.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;max-width:min(92vw,560px);padding:10px 16px;background:rgba(20,16,20,.92);color:#ffd9d9;border:1px solid #b63258;border-radius:10px;font-size:14px;box-shadow:0 4px 18px rgba(0,0,0,.4);";
+        document.body.appendChild(t);
+        setTimeout(function () {
+            try { t.remove(); } catch (e) { if (t.parentNode) t.parentNode.removeChild(t); }
+        }, ms || 4500);
+    } catch (e) {
+        try { console.error(msg); } catch (err) {}
+    }
+}
+
 function getPreviewUrl(sid) {
     return `${BEATMAP_PROVIDER.PREVIEW}${sid}.mp3`;
 }
