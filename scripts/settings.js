@@ -1,4 +1,19 @@
 function setOptionPanel() {
+  // localStorage access itself throws under private mode / shields that
+  // block storage (e.g. Brave mobile): without guards the whole settings
+  // init dies and every choice silently reverts to defaults on reload.
+  function storageGet(key) {
+    try {
+      const s = window.localStorage;
+      return s ? s.getItem(key) : null;
+    } catch (e) { return null; }
+  }
+  function storageSet(key, val) {
+    try {
+      const s = window.localStorage;
+      if (s) s.setItem(key, val);
+    } catch (e) { /* session-only settings */ }
+  }
   // Coerce stored settings: a single corrupt/legacy value (e.g. a null or
   // non-numeric audio offset) used to poison the audio clock with NaN and
   // freeze every game at load. Unknown keys are dropped.
@@ -21,7 +36,7 @@ function setOptionPanel() {
     return out;
   }
   function loadFromLocal() {
-    let str = window.localStorage.getItem("osugamesettings");
+    let str = storageGet("osugamesettings");
     if (str) {
       try {
         let s = JSON.parse(str);
@@ -31,7 +46,7 @@ function setOptionPanel() {
   }
 
   function saveToLocal() {
-    window.localStorage.setItem(
+    storageSet(
       "osugamesettings",
       JSON.stringify(window.gamesettings)
     );

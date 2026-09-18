@@ -122,7 +122,7 @@ var API_PROVIDERS = {
     },
     mino: {
         id: "mino",
-        name: "Mino (catboy.best)",
+        name: "Mino",
         browse: true,
         download: function (sid, withVideo) {
             // "n" suffix strips the video (verified: 18MB -> 4MB on a video map).

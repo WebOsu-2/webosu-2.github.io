@@ -80,3 +80,21 @@ test("settings: range chips show values, restore works", () => {
   document.getElementById("restoredefault-btn").onclick();
   H.eq(gamesettings.dim, 60, "restored to default");
 });
+
+test("settings: blocked storage (private mode/shields) degrades gracefully", () => {
+  const realStorage = global.localStorage;
+  global.localStorage = {
+    getItem() { throw new Error("denied"); },
+    setItem() { throw new Error("denied"); },
+  };
+  try {
+    setOptionPanel(); // must not throw; falls back to defaults
+    H.eq(gamesettings.apiDownload, "sayobot", "defaults when unreadable");
+    const dl = document.getElementById("apidownload-select");
+    dl.value = "mino";
+    dl.onchange(); // must not throw; applies for this session
+    H.eq(gamesettings.apiDownload, "mino", "session applies without storage");
+  } finally {
+    global.localStorage = realStorage;
+  }
+});

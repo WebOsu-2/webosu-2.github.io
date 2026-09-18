@@ -117,6 +117,10 @@ function recordKnownVideo(sid) {
 }
 function boxHasVideoBadge(box, map) {
     if (!box || !map) return;
+    // Badges stay hidden while background videos are disabled.
+    let videoOn = false;
+    try { videoOn = !!(window.gamesettings && window.gamesettings.backgroundVideo); } catch (e) {}
+    if (!videoOn) return;
     function add() {
         if (box.querySelector && box.querySelector(".beatmapvideo")) return;
         // querySelector may not exist on stub/minimal DOM; fall back to scan
