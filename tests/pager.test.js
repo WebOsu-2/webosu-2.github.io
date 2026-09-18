@@ -81,8 +81,7 @@ test("pager: reset() invalidates in-flight stale responses", async () => {
   H.eq(list.children.length, 20, "no interleaved duplicates");
 });
 
-test("pager: one malformed entry does not kill the page", async () => {
-  global.fetch = async (url) => {
+test("pager: one malformed entry does not kill the page", async () => {  global.fetch = async (url) => {
     if (url.includes("beatmapinfo?1=")) return { ok: true, json: async () => ({ data: [] }) };
     return {
       ok: true,
@@ -95,4 +94,33 @@ test("pager: one malformed entry does not kill the page", async () => {
   const n = (await pager.loadMore()).count;
   H.eq(n, 2, "two good boxes survive the bad entry");
   H.eq(list.children.length, 2, "both appended");
+});
+
+test("filters: mode/status predicates share one status scale", () => {
+  H.eq(modeFilter("all"), null, "all modes");
+  H.eq(statusFilter("any"), null, "any status");
+  H.eq(statusFilter(""), null, "empty");
+  const std = modeFilter("std");
+  H.eq(std({ modes: 1 }), true, "std bit");
+  H.eq(std({ modes: 0 }), false, "no std bit");
+  H.eq(std(null), false, "null-safe");
+  const ranked = statusFilter("1");
+  H.eq(ranked({ approved: 1 }), true, "ranked");
+  H.eq(ranked({ approved: 3 }), false, "qualified is not ranked");
+  const grave = statusFilter("-2");
+  H.eq(grave({ approved: -2 }), true, "graveyard");
+});
+
+test("pager: filtered short pages do not end the list", async () => {
+  installFetch({});
+  window.liked_sid_set = [];
+  const list = mklist(), btn = H.makeElement("div");
+  const pager = createBeatmapPager(list, btn, (off) => ({
+    url: pagerUrl(off),
+    filter: (row) => row.sid % 2 === 0,
+  }), 20);
+  const r1 = await pager.loadMore();
+  H.eq(r1.count, 10, "half of 20 match");
+  H.eq(r1.end, false, "provider not exhausted -> keep going");
+  H.eq(btn.style.display, "", "button stays");
 });

@@ -2128,6 +2128,79 @@ body:not(.sound-ready) .difficulty-item {
   }
 }
 
+/* ---- search page ---- */
+.search-head {
+  margin: 6px 0 14px;
+}
+
+.search-head h1 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  color: #fff;
+}
+
+.search-bar {
+  display: flex;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.search-bar input[type="text"] {
+  flex: 1;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid #4a4a55;
+  background: #141417;
+  color: #fff;
+  padding: 0 14px;
+  font-size: 15px;
+  outline: none;
+}
+
+.search-bar input[type="text"]:focus {
+  border-color: #b63258;
+}
+
+.search-bar button {
+  height: 44px;
+  border: none;
+  border-radius: 12px;
+  padding: 0 22px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: #b63258;
+  cursor: pointer;
+}
+
+.search-bar button:hover {
+  background: #d13d6b;
+}
+
+.search-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.search-filters label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: #b9b9c4;
+}
+
+.search-filters select {
+  background: #333;
+  color: #eee;
+  border: 1px solid #555;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
 /* ---- osu-web style beatmap cards (overrides legacy rules above) ---- */
 .beatmap-list {
   display: grid;

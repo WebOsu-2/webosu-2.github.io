@@ -643,12 +643,27 @@ function addBeatmapKind(kind, list, o) {
     });
 }
 
+// List predicates shared by search/genre pages (pure, unit-tested).
+// Status codes match both SayoBot `approved` and osu!api-v2 `ranked`.
+function statusFilter(code) {
+    if (code === "any" || code === "" || code === null || code === undefined) return null;
+    const n = Number(code);
+    if (!Number.isFinite(n)) return null;
+    return function (t) { return t && t.approved === n; };
+}
+function modeFilter(mode) {
+    if (!mode || mode === "all") return null;
+    if (mode === "std") return function (t) { return !!t && ((t.modes & 1) !== 0); };
+    return null;
+}
+
 // ---- Shared paginated list helper ----
 // Replaces the copy-pasted `var cur / btnmore.onclick` blocks on every list
 // page. Handles loading/disabled states, end-of-list, errors ("Retry"),
 // double-click storms and stale responses after reset (genre switches).
 // buildRequest(offset) must return { url, opts } where opts carries
-// { kind, limit, fetchSize, genre, lang } for provider normalization
+// { kind, limit, fetchSize, genre, lang } for provider normalization,
+// plus an optional `filter` predicate forwarded to addBeatmapList
 // (a plain url string is also accepted for back-compat: opts={offset}).
 // Returns { loadMore, reset } where loadMore resolves { count, end }.
 function createBeatmapPager(listEl, moreBtn, buildRequest, pageSize) {
@@ -693,9 +708,10 @@ function createBeatmapPager(listEl, moreBtn, buildRequest, pageSize) {
         if (req.opts.fetchSize === undefined) {
             req.opts.fetchSize = (req.fetchSize !== undefined) ? req.fetchSize : pageSize;
         }
+        const hasFilter = !!req.filter;
         let r;
         try {
-            r = await addBeatmapList(req.url, listEl, null, null, function () { return my !== epoch; }, req.opts);
+            r = await addBeatmapList(req.url, listEl, req.filter || null, null, function () { return my !== epoch; }, req.opts);
         } catch (e) {
             console.error(e);
             r = { count: -1, end: false };
@@ -712,7 +728,9 @@ function createBeatmapPager(listEl, moreBtn, buildRequest, pageSize) {
             return { count: n, end: false };
         }
         offset += pageSize;
-        if (end || n < pageSize) ended = true;
+        // With a filter active, short pages mean "nothing matched here",
+        // not end-of-data: only the provider flag may end the list.
+        if (end || (!hasFilter && n < pageSize)) ended = true;
         paintBtn();
         return { count: n, end: ended };
     }

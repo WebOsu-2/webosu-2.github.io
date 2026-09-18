@@ -60,6 +60,33 @@
 
   <div class="main-page" id="main-page">
     <div class="main-content">
+      <div class="search-head">
+        <h1>Search beatmaps</h1>
+        <form class="search-bar" action="search.html">
+          <input type="text" name="q" id="search-input" placeholder="Song, artist, mapper or set id…" aria-label="Search beatmaps" />
+          <button type="submit">Search</button>
+        </form>
+        <div class="search-filters" id="search-filters" hidden>
+          <label>Mode
+            <select id="filter-mode">
+              <option value="all">All modes</option>
+              <option value="std" selected>osu!std only</option>
+            </select>
+          </label>
+          <label>Status
+            <select id="filter-status">
+              <option value="any">Any status</option>
+              <option value="1">Ranked</option>
+              <option value="2">Approved</option>
+              <option value="3">Qualified</option>
+              <option value="4">Loved</option>
+              <option value="0">Pending</option>
+              <option value="-1">WIP</option>
+              <option value="-2">Graveyard</option>
+            </select>
+          </label>
+        </div>
+      </div>
       <div class="beatmap-list" id="beatmap-list">
         <!-- to be filled in script -->
       </div>
@@ -99,6 +126,7 @@
       var keyword = (url.searchParams.get("q") || "").trim();
       var listEl = document.getElementById("beatmap-list");
       var moreBtn = document.getElementById("btnmore");
+      document.getElementById("search-input").value = keyword;
       if (!keyword) {
         listEl.innerText = "Type a keyword or beatmap id to search.";
         moreBtn.style.display = "none";
@@ -110,10 +138,31 @@
         moreBtn.style.display = "none";
         return;
       }
+      document.getElementById("search-filters").removeAttribute("hidden");
+      function currentFilter() {
+        var mode = document.getElementById("filter-mode").value;
+        var status = document.getElementById("filter-status").value;
+        var fns = [];
+        var mf = (typeof modeFilter === "function") ? modeFilter(mode) : null;
+        var sf = (typeof statusFilter === "function") ? statusFilter(status) : null;
+        if (mf) fns.push(mf);
+        if (sf) fns.push(sf);
+        if (!fns.length) return null;
+        return function (t) {
+          for (var i = 0; i < fns.length; ++i) {
+            if (!fns[i](t)) return false;
+          }
+          return true;
+        };
+      }
       var pager = createBeatmapPager(listEl, moreBtn, function (off) {
-        return buildListUrl("search", off, { limit: 20, keyword: keyword });
+        var r = buildListUrl("search", off, { limit: 20, keyword: keyword });
+        r.filter = currentFilter();
+        return r;
       });
       pager.loadMore();
+      document.getElementById("filter-mode").onchange = function () { pager.reset(); };
+      document.getElementById("filter-status").onchange = function () { pager.reset(); };
     })();
   </script>
 </body>
