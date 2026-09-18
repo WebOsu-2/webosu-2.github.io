@@ -6,7 +6,7 @@
 *
 */
 
-define([], function() {
+// Progress overlay (ES module). PIXI is a global.
     class ProgressOverlay extends PIXI.Container {
         constructor(windowfield, starttime, endtime) {
             super();
@@ -42,6 +42,7 @@ define([], function() {
         }
 
         update(time) {
+            if (Number.isNaN(time)) return; // clock glitch: keep last text
             this.remaining.text = ProgressOverlay.timeformat(Math.max(0, (this.endtime - time) / 1000));
             this.past.text = ProgressOverlay.timeformat((time - this.starttime) / 1000);
         }
@@ -51,5 +52,4 @@ define([], function() {
         }
     }
 
-    return ProgressOverlay;
-});
+    export default ProgressOverlay;

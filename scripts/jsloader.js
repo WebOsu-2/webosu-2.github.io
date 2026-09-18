@@ -28,21 +28,17 @@ window.beatmaplistLoadedCallback = function () {
 			if (!window.aaaaa) window.aaaaa = 0;
 			window.aaaaa += 1;
 			if (window.aaaaa == 4) {
-				// load scripts of game
-				loadScript("scripts/lib/require.js", function() {
-		            require.config({
-		                paths: {
-		                    underscore: 'lib/underscore',
-		                    sound: 'lib/sound'
-		                },
-		                shim: {
-		                    "underscore": {
-		                        exports: "_"
-		                    }
-		                },
-		                // urlArgs: "bust=" +  (new Date()).getTime()
-		            });
-				}, {"data-main":"scripts/initgame"});
+				// underscore + sound must EXECUTE before the entry module
+				// evaluates (it touches both synchronously), so chain them
+				// instead of racing parallel inserts.
+				loadScript("scripts/lib/underscore.js", function () {
+					loadScript("scripts/lib/sound.js", function () {
+						// load the game entry as an ES module (game code in
+						// scripts/*.js uses import/export; vendor globals above
+						// stay classic scripts). data-main/require.js is gone.
+						loadScript("scripts/initgame.js", null, { type: "module" });
+					});
+				});
 				// load Liked list
 				if (window.localforage) {
 					if (!window.liked_sid_set_callbacks) window.liked_sid_set_callbacks = [];

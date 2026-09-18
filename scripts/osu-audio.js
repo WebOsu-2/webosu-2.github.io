@@ -1,5 +1,6 @@
-define([], function () {
-  function syncStream(node) {
+// Audio engine (ES module). Relies on browser globals: AudioContext,
+// document, game (settings), mp3Parser, showErrorToast.
+function syncStream(node) {
     // https://stackoverflow.com/questions/10365335/decodeaudiodata-returning-a-null-error
     var buf8 = new Uint8Array(node.buf);
     buf8.indexOf = Array.prototype.indexOf;
@@ -158,7 +159,33 @@ define([], function () {
     decode({ buf: buffer, sync: 0, retry: 0 });
 
     this.getPosition = function () {
-      return this._getPosition() - this.posoffset / 1000;
+      const p = this._getPosition() - this.posoffset / 1000;
+      if (Number.isNaN(p)) {
+        // The game clock must never be NaN (it freezes gameplay and prints
+        // NaN:NaN timers). Log the components once for diagnosis and fall
+        // back to the last good position so the game stays playable.
+        if (!self._nanWarned) {
+          self._nanWarned = true;
+          let info = {};
+          try {
+            info = {
+              playing: self.playing,
+              position: self.position,
+              currentTime: self.audio && self.audio.currentTime,
+              started: self.started,
+              rate: self.playbackRate,
+              posoffset: self.posoffset,
+            };
+          } catch (e) { info.err = String(e); }
+          console.error("audio clock NaN; components:", JSON.stringify(info));
+          if (typeof showErrorToast === "function") {
+            showErrorToast("Audio clock glitch detected (" + JSON.stringify(info) + "). If the game misbehaves, please report this.");
+          }
+        }
+        return (typeof self._lastGoodPosition === "number") ? self._lastGoodPosition : 0;
+      }
+      self._lastGoodPosition = p;
+      return p;
     };
 
     this._getPosition = function _getPosition() {
@@ -273,5 +300,4 @@ define([], function () {
     };
   }
 
-  return OsuAudio;
-});
+export default OsuAudio;

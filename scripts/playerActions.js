@@ -1,4 +1,4 @@
-define([], function () {
+// Player input handling (ES module). Reads globals playback/game/gfx at event time.
   var checkClickdown = function checkClickdown() {
     // Ignore clicks while paused or after game end (pause-menu exploit).
     if (playback.game.paused || playback.ended) return;
@@ -459,5 +459,4 @@ define([], function () {
       writable: true,
     });
   }
-  return playerActions;
-});
+  export default playerActions;

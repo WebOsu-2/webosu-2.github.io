@@ -2,13 +2,13 @@
 "use strict";
 const H = require("./helpers");
 
-const Curve = H.loadAmd("scripts/curves/Curve.js", {});
-const CurveType = H.loadAmd("scripts/curves/CurveType.js", {});
-const Bezier2 = H.loadAmd("scripts/curves/Bezier2.js", {}, );
-const EqualDistanceMultiCurve = H.loadAmd("scripts/curves/EqualDistanceMultiCurve.js", {});
-// LinearBezier deps resolve via the loader's curves/ path mapping.
-const LinearBezier = H.loadAmd("scripts/curves/LinearBezier.js", {});
-const CircumscribedCircle = H.loadAmd("scripts/curves/CircumscribedCircle.js", {});
+global._ = require("../scripts/lib/underscore.js");
+const Curve = H.loadModule("scripts/curves/Curve.js").default;
+const CurveType = H.loadModule("scripts/curves/CurveType.js").default;
+const Bezier2 = H.loadModule("scripts/curves/Bezier2.js").default;
+const EqualDistanceMultiCurve = H.loadModule("scripts/curves/EqualDistanceMultiCurve.js").default;
+const LinearBezier = H.loadModule("scripts/curves/LinearBezier.js").default;
+const CircumscribedCircle = H.loadModule("scripts/curves/CircumscribedCircle.js").default;
 
 test("curves: Curve.lerp interpolates", () => {
   H.eq(Curve.lerp(0, 10, 0.25), 2.5, "lerp");

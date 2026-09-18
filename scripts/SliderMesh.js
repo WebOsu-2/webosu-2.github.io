@@ -8,9 +8,10 @@
 *   radius: radius of hit circle, in osu! pixels
 *   transform: {dx,ox,dy,oy} (x,y)->(x*dx+ox, y*dy+oy) [-1,1]x[-1,1]
 *   tint: 24-bit integer color of inner slider body, RGB from highbits to lowbits
+*
+* ES module; PIXI is a global from scripts/lib/pixi.min.js.
 */
 
-define([], function () {
     // Helper functions and shader sources remain unchanged.
     const vertexSrc = `
     precision mediump float;
@@ -206,7 +207,7 @@ define([], function () {
     }
 
     // Updated SliderMesh class using ES6 class syntax and extending PIXI.Container.
-    class SliderMesh extends PIXI.Container {
+    export default class SliderMesh extends PIXI.Container {
         constructor(curve, radius, tintid) {
             super();
             this.curve = curve;
@@ -359,6 +360,3 @@ define([], function () {
             this.state = null;
         }
     }
-
-    return SliderMesh;
-});

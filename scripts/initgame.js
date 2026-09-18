@@ -1,5 +1,10 @@
-require(["osu", "underscore", "sound", "playback"],
-function(Osu, _, sound, Playback) {
+// Game entry module (loaded as <script type="module"> by jsloader after
+// the classic vendor scripts). Globals used: PIXI, _, sounds, localforage,
+// document, window. Exposes window.Osu / window.Playback / window.game.
+import Osu from './osu.js';
+import Playback from './playback.js';
+main();
+function main() {
     // check for WebGL
     if (!PIXI || !PIXI.utils.isWebGLSupported()) {
         try {
@@ -98,7 +103,7 @@ function(Osu, _, sound, Playback) {
         document.getElementById("skin-progress").classList.add("finished");
         document.body.classList.add("skin-ready");
     
-        Skin = resources['sprites.json'].textures; // Maintain the same variable assignment
+        window.Skin = resources['sprites.json'].textures;
     });
     
 
@@ -187,4 +192,4 @@ function(Osu, _, sound, Playback) {
     window.addEventListener("dragover", function(e){e=e||window.event; e.preventDefault(); e.stopPropagation();});
     window.addEventListener("dragstart", function(e){e=e||window.event; e.preventDefault(); e.stopPropagation();});
     window.addEventListener("drop", function(e){e=e||window.event; e.preventDefault(); e.stopPropagation();});
-});
+}

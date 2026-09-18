@@ -1,5 +1,5 @@
-define([], function () {
-    return class LoadingMenu extends PIXI.Container {
+// Loading overlay (ES module). PIXI/Skin are globals.
+export default class LoadingMenu extends PIXI.Container {
         constructor(windowfield, track) {
             super();
             this.fadetime = 200;
@@ -119,5 +119,4 @@ define([], function () {
             this.loading = null;
             // Add similar cleanup for other elements if needed
         }
-    };
-});
+    }

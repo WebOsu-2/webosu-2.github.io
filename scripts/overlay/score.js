@@ -10,7 +10,7 @@
 *   
 */
 
-define([], function () {
+ // Score overlay (ES module). PIXI/localforage are globals.
     function addPlayHistory(summary) {
         if (!window.playHistory1000) {
             window.playHistory1000 = [];
@@ -340,5 +340,4 @@ define([], function () {
         }
     }
 
-    return ScoreOverlay;
-});
+    export default ScoreOverlay;

@@ -6,7 +6,7 @@
 *
 */
 
-define([], function () {
+// Volume overlay (ES module). PIXI is a global.
     class VolumeMenu extends PIXI.Container {
         constructor(windowfield) {
             super();
@@ -58,5 +58,4 @@ define([], function () {
         }
     }
 
-    return VolumeMenu;
-});
+    export default VolumeMenu;

@@ -1,5 +1,8 @@
-define(["underscore", "osu-audio", "curves/LinearBezier", "curves/CircumscribedCircle"],
-function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
+import OsuAudio from './osu-audio.js';
+import LinearBezier from './curves/LinearBezier.js';
+import CircumscribedCircle from './curves/CircumscribedCircle.js';
+// NOTE: `_` (underscore) is a global from scripts/lib/underscore.js,
+// loaded as a classic script before the game entry module.
     var HIT_TYPE_CIRCLE = 1,
         HIT_TYPE_SLIDER = 2,
         HIT_TYPE_NEWCOMBO = 4,
@@ -194,6 +197,26 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
                             hit.hitSample.normalSet = 0;
                         if (hit.hitSample && hit.hitSample.additionSet > 3)
                             hit.hitSample.additionSet = 0;
+                        // A single NaN coordinate/time poisons the whole game
+                        // clock (NaN timers, frozen objects). Drop it loudly.
+                        if (!Number.isFinite(hit.x) || !Number.isFinite(hit.y) || !Number.isFinite(hit.time)) {
+                            console.warn("[preproc]", "dropping hit object with non-finite x/y/time:", line);
+                            break;
+                        }
+                        if (hit.type === "slider") {
+                            if (!Number.isFinite(hit.repeat) || hit.repeat < 1) {
+                                console.warn("[preproc]", "clamping bad slider repeat:", line);
+                                hit.repeat = 1;
+                            }
+                            if (!Number.isFinite(hit.pixelLength) || hit.pixelLength < 0) {
+                                console.warn("[preproc]", "clamping bad slider length:", line);
+                                hit.pixelLength = 0;
+                            }
+                        }
+                        if (hit.type === "spinner" && !Number.isFinite(hit.endTime)) {
+                            console.warn("[preproc]", "dropping spinner with bad endTime:", line);
+                            break;
+                        }
                         self.hitObjects.push(hit);
                         break;
                 }
@@ -463,7 +486,8 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
     // exposed for Playback rate mods + unit tests
     Osu.scaleChartForRate = scaleChartForRate;
 
-    return Osu;
+    export default Osu;
+    export { Track };
 
     // DT/NC support: compress (rate>1) or expand (rate<1) chart times onto
     // the rate-adjusted audio clock. Returns fresh { hits, timingPoints };
@@ -639,4 +663,3 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
             }
         }
     }
-});

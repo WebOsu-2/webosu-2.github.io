@@ -10,13 +10,10 @@ global.game = { globalOffset: 0 };
 if (!global.__audioCtxStub) global.__audioCtxStub = H.makeAudioContextStub({ currentTime: 0 });
 global.AudioContext = function () { return global.__audioCtxStub; };
 
-const OsuAudio = H.loadAmd("scripts/osu-audio.js", {});
-const exposed = H.loadAmd("scripts/osu.js", { "osu-audio": OsuAudio }, {
-  find: "    return Osu;",
-  replace: "    return { Osu: Osu, Track: Track };",
-});
+global._ = global._ || require("../scripts/lib/underscore.js");
+const exposed = H.loadModule("scripts/osu.js");
 const Track = exposed.Track;
-const scale = exposed.Osu.scaleChartForRate;
+const scale = exposed.default.scaleChartForRate;
 
 function decode(text) {
   const t = new Track({}, text);

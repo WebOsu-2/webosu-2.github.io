@@ -1,9 +1,19 @@
 /*
 *   object layering:
 *       assuming number of possible hits doesn't exceed 9998
+*
+* ES module entry for gameplay. `_`, `PIXI`, `Skin` are globals from the
+* classic scripts loaded before the game entry module.
 */
-define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume", "overlay/loading", "overlay/break", "overlay/progress", "overlay/hiterrormeter"],
-    function (Osu, setPlayerActions, SliderMesh, ScoreOverlay, VolumeMenu, LoadingMenu, BreakOverlay, ProgressOverlay, ErrorMeterOverlay) {
+import Osu from './osu.js';
+import setPlayerActions from './playerActions.js';
+import SliderMesh from './SliderMesh.js';
+import ScoreOverlay from './overlay/score.js';
+import VolumeMenu from './overlay/volume.js';
+import LoadingMenu from './overlay/loading.js';
+import BreakOverlay from './overlay/break.js';
+import ProgressOverlay from './overlay/progress.js';
+import ErrorMeterOverlay from './overlay/hiterrormeter.js';
         function clamp01(a) {
             return Math.min(1, Math.max(0, a));
         }
@@ -522,16 +532,40 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
 
             // Optional background video (off by default; needs a download
             // that includes the video file). Synced to the audio clock.
+            // Containers browsers cannot play (most old maps ship .avi)
+            // are skipped with an explanation instead of a black box.
             this.setupVideoBG = function () {
                 self.bgVideo = null;
                 self._videoTimer = null;
                 if (!self.game.backgroundVideo) return;
                 if (!self.track.video || !self.track.video.filename) return;
                 if (!self.osu || typeof self.osu.getVideoFile !== "function") return;
+                const ext = (function () {
+                    const n = String(self.track.video.filename).toLowerCase();
+                    const i = n.lastIndexOf(".");
+                    return i === -1 ? "" : n.substr(i);
+                })();
+                const PLAYABLE = [".mp4", ".m4v", ".mov", ".webm", ".ogv", ".ogg"];
+                if (PLAYABLE.indexOf(ext) === -1) {
+                    console.info("background video skipped: " + ext + " is not browser-playable");
+                    if (typeof showErrorToast === "function") {
+                        showErrorToast("This map's video (" + ext + ") can't play in browsers. Only mp4/webm/ogv/mov work.");
+                    }
+                    return;
+                }
                 const my = self;
                 try {
                     self.osu.getVideoFile(self.track, function (blob) {
-                        if (!blob) return;
+                        if (!blob) {
+                            // enabled but the osz has no video: it was
+                            // downloaded stripped (default) or from a mirror
+                            // without video. Tell the user how to fix it.
+                            console.info("background video missing from download");
+                            if (typeof showErrorToast === "function") {
+                                showErrorToast("Background video is on, but this download has no video file. Re-pick the map with Background videos enabled (needs the Mino/NeriNyan mirror).");
+                            }
+                            return;
+                        }
                         if (my.ended) return; // game already over/quitted
                         try {
                             const url = URL.createObjectURL(blob);
@@ -546,6 +580,12 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                                 el.style.opacity = String(Math.max(0.1, 1 - dim));
                             } catch (e) { /* ignore */ }
                             el.src = url;
+                            el.addEventListener("error", function () {
+                                console.error("background video element error");
+                                if (typeof showErrorToast === "function") {
+                                    showErrorToast("Background video failed to play (unsupported codec?).");
+                                }
+                            });
                             const area = document.getElementById("game-area");
                             if (area) area.appendChild(el);
                             // keep the playfield canvas above the video
@@ -1588,5 +1628,4 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
             }
         }
 
-        return Playback;
-    });
+    export default Playback;

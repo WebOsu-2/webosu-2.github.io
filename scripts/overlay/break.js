@@ -6,7 +6,7 @@
 *
 */
 
-define([], function () {
+// Break overlay (ES module). PIXI is a global.
     class BreakOverlay extends PIXI.Container {
         constructor(windowfield) {
             super();
@@ -78,5 +78,4 @@ define([], function () {
         }
     }
 
-    return BreakOverlay;
-});
+    export default BreakOverlay;

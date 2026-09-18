@@ -1,8 +1,8 @@
 
-define([],
-function() {
-    // Adapted from CircumscribedCircle.java @ github.com/itdelatrisu/opsu
-    function CircumscribedCircle(hit) {
+import { CURVE_POINTS_SEPERATION } from './EqualDistanceMultiCurve.js';
+
+// Adapted from CircumscribedCircle.java @ github.com/itdelatrisu/opsu
+export default function CircumscribedCircle(hit) {
 
         var start = { x: hit.x, y: hit.y };
         var mid = { x: hit.keyframes[0].x, y: hit.keyframes[0].y };
@@ -58,8 +58,7 @@ function() {
         endAng = (endAng > startAng) ? startAng + arcAng : startAng - arcAng;
 
         // calculate points
-        var sep = (typeof CURVE_POINTS_SEPERATION !== "undefined") ? CURVE_POINTS_SEPERATION : 3;
-        var step = Math.floor(hit.pixelLength / sep);
+        var step = Math.floor(hit.pixelLength / CURVE_POINTS_SEPERATION);
         var curve = new Array(step + 1);
 
         var pointAt = function(t) {
@@ -84,7 +83,6 @@ function() {
         }
         return {curve: curve, pointAt: pointAt, totalDistance: l};
     }
-    return CircumscribedCircle;
 
     function lerp(a, b, t) {
         return a * (1 - t) + b * t;
@@ -130,4 +128,3 @@ function() {
         var u = ((b.y - a.y) * ta.x + (a.x - b.x) * ta.y) / des;
         return { x: b.x + tb.x * u, y: b.y + tb.y * u };
     }
-});

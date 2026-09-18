@@ -15,7 +15,7 @@ global.document = { body: { addEventListener() {} }, addEventListener() {}, hidd
 global.game = { globalOffset: 0 };
 global.AudioContext = function () { return sharedCtx; };
 
-const OsuAudio = H.loadAmd("scripts/osu-audio.js", {});
+const OsuAudio = H.loadModule("scripts/osu-audio.js").default;
 
 function makeAudio(opts = {}) {
   sharedCtx.currentTime = 100;
