@@ -3,7 +3,7 @@
 const fs = require("fs");
 const H = require("./helpers");
 
-global.window = {};
+global.window = { gamesettings: { backgroundVideo: true } };
 global.document = H.createDom().document;
 const saved = {};
 global.localforage = {
@@ -41,8 +41,7 @@ test("video-registry: badge from flag or record, never twice", () => {
   H.eq(box2.children.length, 1, "record drives badge without flag");
 });
 
-test("video-registry: boxes re-check once registry loads", () => {
-  window.video_sid_set = undefined; // not loaded yet
+test("video-registry: boxes re-check once registry loads", () => {  window.video_sid_set = undefined; // not loaded yet
   window.video_sid_set_callbacks = [];
   const box = H.makeElement("div");
   boxHasVideoBadge(box, { sid: 7 });
@@ -53,4 +52,13 @@ test("video-registry: boxes re-check once registry loads", () => {
   window.video_sid_set_callbacks = [];
   cbs.forEach((cb) => cb());
   H.eq(box.children.length, 1, "badge appears after load");
+});
+
+test("video-registry: no badges while background video is disabled", () => {
+  window.gamesettings.backgroundVideo = false;
+  window.video_sid_set = [8];
+  const box = H.makeElement("div");
+  boxHasVideoBadge(box, { sid: 8, video: true });
+  H.eq(box.children.length, 0, "hidden when disabled");
+  window.gamesettings.backgroundVideo = true;
 });
