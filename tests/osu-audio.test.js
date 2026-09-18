@@ -5,9 +5,10 @@
 const H = require("./helpers");
 
 // The module under test captures ONE AudioContext at load time and shares
-// it across instances (same as the browser). Tests configure this shared
-// stub instead of swapping instances.
-const sharedCtx = H.makeAudioContextStub({ currentTime: 0 });
+// it across instances (same as the browser). All test files must hand it
+// the same singleton or load order changes behavior: hence __audioCtxStub.
+if (!global.__audioCtxStub) global.__audioCtxStub = H.makeAudioContextStub({ currentTime: 0 });
+const sharedCtx = global.__audioCtxStub;
 let ctx = sharedCtx;
 global.window = {};
 global.document = { body: { addEventListener() {} }, addEventListener() {}, hidden: false };
