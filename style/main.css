@@ -2014,6 +2014,40 @@ body:not(.sound-ready) .difficulty-item {
   width: 100%;
 }
 
+/* ---- responsive data tables (history page) ---- */
+.table-scroll {
+  overflow-x: auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+.table-scroll td,
+.table-scroll th {
+  padding: 8px 12px;
+  text-align: left;
+}
+
+/* beatmap titles may wrap instead of forcing width */
+.table-scroll td:nth-child(2) {
+  white-space: normal;
+  min-width: 180px;
+}
+
+@media (max-width: 560px) {
+  .table-scroll td,
+  .table-scroll th {
+    padding: 6px 8px;
+    font-size: 13px;
+  }
+}
+
 /* ---- homepage section headers ---- */
 .section-head {
   display: flex;
