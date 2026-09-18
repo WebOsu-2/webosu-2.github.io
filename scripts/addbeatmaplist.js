@@ -81,6 +81,66 @@ function likedDelete(sid) {
     }
 }
 if (!window.liked_sid_set_callbacks) window.liked_sid_set_callbacks = [];
+if (!window.video_sid_set_callbacks) window.video_sid_set_callbacks = [];
+
+// ---- Known-video registry ----
+// SayoBot never flags video maps, so remember ground truth locally: any
+// downloaded set containing a video file gets the VIDEO badge from then
+// on, regardless of provider. Stored as a plain Array (see liked note).
+function normalizeSidList(val) {
+    if (!val) return [];
+    if (typeof Set !== "undefined" && val instanceof Set) return Array.from(val);
+    if (Array.isArray(val)) return val.filter(function (x) { return x || x === 0; });
+    return [];
+}
+function sidKey(sid) { return String(sid); }
+function hasKnownVideo(sid) {    const list = window.video_sid_set;
+    if (!Array.isArray(list) || sid === undefined || sid === null) return false;
+    const k = sidKey(sid);
+    for (let i = 0; i < list.length; ++i) {
+        if (sidKey(list[i]) === k) return true;
+    }
+    return false;
+}
+function recordKnownVideo(sid) {
+    if (sid === undefined || sid === null || sid === "") return;
+    if (!Array.isArray(window.video_sid_set)) {
+        window.video_sid_set = normalizeSidList(window.video_sid_set);
+    }
+    if (!hasKnownVideo(sid)) {
+        window.video_sid_set.push(typeof sid === "number" ? sid : (Number(sid) || sid));
+        try {
+            const store = window.localforage || ((typeof localforage !== "undefined") ? localforage : null);
+            if (store) store.setItem("videosidset", window.video_sid_set, function () {});
+        } catch (e) { /* ignore */ }
+    }
+}
+function boxHasVideoBadge(box, map) {
+    if (!box || !map) return;
+    function add() {
+        if (box.querySelector && box.querySelector(".beatmapvideo")) return;
+        // querySelector may not exist on stub/minimal DOM; fall back to scan
+        if (!box.querySelector) {
+            const kids = box.children || box.childNodes || [];
+            for (let i = 0; i < kids.length; ++i) {
+                if (kids[i] && kids[i].className === "beatmapvideo") return;
+            }
+        }
+        let el = document.createElement("div");
+        el.className = "beatmapvideo";
+        el.innerText = "VIDEO";
+        el.title = "This beatmap has a background video";
+        box.appendChild(el);
+    }
+    if (map.video || hasKnownVideo(map.sid) || (box.sid !== undefined && hasKnownVideo(box.sid))) {
+        add();
+        return;
+    }
+    // video registry may load after the box; re-check once ready
+    if (!window.video_sid_set) {
+        window.video_sid_set_callbacks.push(function () { boxHasVideoBadge(box, map); });
+    }
+}
 
 function starname(star) {
     if (typeof (star) == "null") return "unknown";
@@ -334,15 +394,10 @@ var NSaddBeatmapList = {
         pBeatmapCover.width = 130;
         pBeatmapCover.height = 130;
         pBeatmapApproved.innerText = approvedText(map.approved);
-        // little "VIDEO" label for beatmaps shipping a background video
-        // (flag only known for providers exposing it, e.g. Mino)
-        if (map.video) {
-            let pBeatmapVideo = document.createElement("div");
-            pBeatmapVideo.className = "beatmapvideo";
-            pBeatmapVideo.innerText = "VIDEO";
-            pBeatmapVideo.title = "This beatmap has a background video";
-            pBeatmapBox.appendChild(pBeatmapVideo);
-        }
+        // little "VIDEO" label for beatmaps shipping a background video.
+        // map.video comes from providers exposing the flag (e.g. Mino);
+        // hasKnownVideo() covers sets confirmed from a previous download.
+        boxHasVideoBadge(pBeatmapBox, map);
         if (list) {
             list.appendChild(pBeatmapBox);
         }

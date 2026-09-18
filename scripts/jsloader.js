@@ -42,6 +42,7 @@ window.beatmaplistLoadedCallback = function () {
 				// load Liked list
 				if (window.localforage) {
 					if (!window.liked_sid_set_callbacks) window.liked_sid_set_callbacks = [];
+					if (!window.video_sid_set_callbacks) window.video_sid_set_callbacks = [];
 					localforage.getItem("likedsidset", function(err, item) {
 	                    if (!err) {
 	                    	// Migrate legacy Set storage to plain Array (JSON-safe).
@@ -75,6 +76,23 @@ window.beatmaplistLoadedCallback = function () {
 	                    	window.liked_sid_set = [];
 	                    }
                 	});
+					// known-video registry (drives VIDEO badges independently
+					// of provider flags); same load/drain pattern as liked.
+					localforage.getItem("videosidset", function (err, item) {
+						if (!err) {
+							window.video_sid_set = (typeof normalizeSidList === "function")
+								? normalizeSidList(item)
+								: (Array.isArray(item) ? item : []);
+						} else {
+							console.error("failed loading video list");
+							window.video_sid_set = [];
+						}
+						var vcbs = window.video_sid_set_callbacks || [];
+						for (let i = 0; i < vcbs.length; ++i) {
+							try { vcbs[i](); } catch (e) { console.error(e); }
+						}
+						window.video_sid_set_callbacks = [];
+					});
 				}
 			}
 		}

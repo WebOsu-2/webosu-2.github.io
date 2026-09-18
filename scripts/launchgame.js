@@ -22,6 +22,17 @@ function launchOSU(osu, beatmapid, version) {
   }
   // prevent launching multiple times
   if (window.app) return;
+  // remember sets confirmed to ship a video (drives the VIDEO badge)
+  try {
+    if (typeof recordKnownVideo === "function" && osu && osu.tracks) {
+      for (let i = 0; i < osu.tracks.length; ++i) {
+        const tr = osu.tracks[i];
+        if (tr && tr.video && tr.video.filename) {
+          recordKnownVideo(tr.metadata && tr.metadata.BeatmapSetID);
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
   console.log("launching PIXI app");
   // launch PIXI app
   let viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
