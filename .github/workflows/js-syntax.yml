@@ -32,3 +32,24 @@ jobs:
 
       - name: Run unit/regression suite (zero-dep node tests)
         run: node tests/run.js
+
+      - name: Minify smoke (public globals survive minification)
+        # Regression guard: terser --module tree-shakes classic scripts'
+        # cross-file globals (once shipped empty launchgame.js). Mirrors
+        # the minify.yml per-file rule and asserts survivors.
+        run: |
+          npm install -g terser
+          fail=0
+          check() {
+            if grep -qE '^\s*(import|export)[ (]' "$1"; then terser "$1" --module --compress --mangle -o /tmp/sm.js;
+            else terser "$1" --compress --mangle -o /tmp/sm.js; fi
+            grep -q "$2" /tmp/sm.js || { echo "LOST: $2 in $1"; fail=1; }
+          }
+          check scripts/addbeatmaplist.js "function addBeatmapKind"
+          check scripts/launchgame.js "function launchGame"
+          check scripts/config.js "function getDownloadUrl"
+          check scripts/downloader.js "function startpreview"
+          check scripts/settings.js "function setOptionPanel"
+          check scripts/osu.js "scaleChartForRate"
+          check scripts/playback.js "export default"
+          exit $fail
