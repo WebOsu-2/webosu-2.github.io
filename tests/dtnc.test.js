@@ -75,6 +75,16 @@ test("rate: daycore expands times", () => {
   H.eq(s.timingPoints[0].millisecondsPerBeat, 500 / 0.75, "bpm expanded");
 });
 
+test("rate: bogus rates fall back to identity, never NaN", () => {
+  const t = decode(MAP);
+  for (const bad of [undefined, NaN, 0, -1.5, Infinity]) {
+    const s = scale(t.hitObjects, t.timingPoints, bad);
+    H.assert(s.hits.every((h) => Number.isFinite(h.time) && Number.isFinite(h.endTime)),
+      "finite times for rate " + String(bad));
+    H.eq(s.hits[0].time, 1000, "unscaled value for rate " + String(bad));
+  }
+});
+
 test("rate: inputs are never mutated (retries stay idempotent)", () => {
   const t = decode(MAP);
   const beforeHits = JSON.stringify(t.hitObjects.map((h) => [h.time, h.endTime]));
