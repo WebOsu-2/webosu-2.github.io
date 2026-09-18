@@ -499,13 +499,14 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                         blurFilter.blur = self.game.backgroundBlurRate;
                         sprite.filters = [blurFilter];
                     }
-                    // Use the sprite directly as the background.
+                    // Use the sprite directly as the background, unless a
+                    // video layer already took over (it may have become
+                    // active while this texture was loading).
+                    if (self.bgVideo) {
+                        try { sprite.destroy(); } catch (e) { /* ignore */ }
+                        return;
+                    }
                     self.background = sprite;
-                    // a live video layer replaces the cover (it may have
-                    // become active while this texture was loading)
-                    try {
-                        if (self.bgVideo) self.background.visible = false;
-                    } catch (e) { /* ignore */ }
                     self.background.anchor.set(0.5);
                     self.background.x = window.innerWidth / 2;
                     self.background.y = window.innerHeight / 2;
@@ -547,14 +548,6 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             this.setupVideoBG = function () {
                 self.bgVideo = null;
                 self._videoTimer = null;
-                // The canvas clears opaque every frame; without this the DOM
-                // video underneath can never be seen. Default back to opaque
-                // (a previous retry may have left it transparent).
-                try {
-                    if (window.app && window.app.renderer && window.app.renderer.background) {
-                        window.app.renderer.background.alpha = 1;
-                    }
-                } catch (e) { /* ignore */ }
                 if (!self.game.backgroundVideo) return;
                 if (!self.track.video || !self.track.video.filename) return;
                 if (!self.osu || typeof self.osu.getVideoFile !== "function") return;
@@ -585,65 +578,71 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                             return;
                         }
                         if (my.ended) return; // game already over/quitted
+                        // Render as a Pixi texture, not a DOM overlay: the
+                        // canvas clears opaque every frame, so a DOM video
+                        // underneath can never be seen reliably.
                         try {
                             const url = URL.createObjectURL(blob);
                             const el = document.createElement("video");
-                            el.className = "bg-video";
                             el.muted = true;
                             el.playsInline = true;
                             el.preload = "auto";
-                            // follow the background dim setting
-                            try {
-                                const dim = (self.game && self.game.backgroundDimRate) || 0;
-                                el.style.opacity = String(Math.max(0.1, 1 - dim));
-                            } catch (e) { /* ignore */ }
                             el.src = url;
+                            const cleanup = function () {
+                                try { el.pause(); } catch (e) {}
+                                try { URL.revokeObjectURL(url); } catch (e) {}
+                            };
                             el.addEventListener("error", function () {
                                 console.error("background video element error");
                                 if (typeof showErrorToast === "function") {
                                     showErrorToast("Background video failed to play (unsupported codec?).");
                                 }
-                                // degrade to the regular background instead
-                                // of a black void: drop the dead element,
-                                // restore the opaque canvas + cover sprite.
-                                try { my.stopVideoBG(); } catch (e) {}
-                                my.bgVideo = null;
-                                try {
-                                    if (window.app && window.app.renderer && window.app.renderer.background) {
-                                        window.app.renderer.background.alpha = 1;
-                                    }
-                                } catch (e) { /* ignore */ }
-                                try {
-                                    if (el.parentNode) el.parentNode.removeChild(el);
-                                    if (my.background) my.background.visible = true;
-                                } catch (e) { /* ignore */ }
+                                cleanup();
                             });
-                            const area = document.getElementById("game-area");
-                            if (area) area.appendChild(el);
-                            // keep the playfield canvas above the video
-                            try {
-                                if (window.app && window.app.view) {
-                                    window.app.view.style.position = "relative";
-                                    window.app.view.style.zIndex = "1";
+                            const build = function () {
+                                if (my.ended) { cleanup(); return; }
+                                try {
+                                    const tex = PIXI.Texture.from(el);
+                                    const sprite = new PIXI.Sprite(tex);
+                                    sprite.anchor.set(0.5);
+                                    sprite.x = window.innerWidth / 2;
+                                    sprite.y = window.innerHeight / 2;
+                                    const sw = tex.width || window.innerWidth;
+                                    const sh = tex.height || window.innerHeight;
+                                    sprite.scale.set(Math.max(window.innerWidth / sw, window.innerHeight / sh));
+                                    // swap the cover for the video (whichever
+                                    // finished loading first wins; the other
+                                    // path sees bgVideo and stands down)
+                                    if (my.background) {
+                                        try { my.game.stage.removeChild(my.background); } catch (e) {}
+                                        try { my.background.destroy(); } catch (e) {}
+                                    }
+                                    my.background = sprite;
+                                    my.game.stage.addChildAt(my.background, 0);
+                                    my.bgVideo = {
+                                        el: el,
+                                        url: url,
+                                        // map ms -> audio clock (DT/NC scale the chart)
+                                        offset: (self.track.video.offset || 0) / (self.timeRate || 1),
+                                    };
+                                    my.syncVideoBG(true);
+                                } catch (e) {
+                                    console.error("video setup failed", e);
+                                    cleanup();
                                 }
-                            } catch (e) { /* ignore */ }
-                            my.bgVideo = {
-                                el: el,
-                                url: url,
-                                // map ms -> audio clock (DT/NC scale the chart)
-                                offset: (self.track.video.offset || 0) / (self.timeRate || 1),
                             };
-                            // reveal: transparent canvas + hide the cover
-                            // sprite, which would otherwise paint over it.
                             try {
-                                if (window.app && window.app.renderer && window.app.renderer.background) {
-                                    window.app.renderer.background.alpha = 0;
-                                }
+                                const pr = el.play();
+                                if (pr && pr.catch) pr.catch(function () { /* autoplay policy */ });
                             } catch (e) { /* ignore */ }
-                            try {
-                                if (self.background) self.background.visible = false;
-                            } catch (e) { /* ignore */ }
-                            my.syncVideoBG(true);
+                            if (el.readyState >= 2) {
+                                build();
+                            } else {
+                                el.addEventListener("canplay", function h() {
+                                    try { el.removeEventListener("canplay", h); } catch (e) {}
+                                    build();
+                                });
+                            }
                         } catch (e) { console.error("video setup failed", e); }
                     });
                 } catch (e) { console.error("video setup failed", e); }

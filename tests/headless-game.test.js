@@ -144,10 +144,15 @@ test("headless: real map boots, clock finite, objects stream", async () => {
   pb.destroy();
 });
 
-test("headless: enabled video layer appears above nothing and unhides", async () => {
-  // window.app stand-in: the video reveal must flip the canvas transparent
-  // (an opaque clear color would paint over the DOM video forever).
+test("headless: enabled video becomes a texture sprite, canvas untouched", async () => {
   global.window.app = { view: { style: {} }, renderer: { background: { color: 0x111111, alpha: 1 } } };
+  const createdVideos = [];
+  const docCreate = document.createElement.bind(document);
+  document.createElement = (tag) => {
+    const el = docCreate(tag);
+    if (String(tag).toLowerCase() === "video") createdVideos.push(el);
+    return el;
+  };
   try {
     const game = makeGame({ backgroundVideo: true });
     const mp4bytes = fs.readFileSync(path.join(FIXDIR, "audio.mp3"));
@@ -166,11 +171,13 @@ test("headless: enabled video layer appears above nothing and unhides", async ()
     const track = osu.tracks.find((t) => (t.metadata.Version || "").includes("Normal")) || osu.tracks[0];
     track.video = { filename: "bg.mp4", offset: 0 };
     const pb = new Playback(game, osu, track);
-    H.assert(pb.bgVideo && pb.bgVideo.el, "video layer created");
-    H.eq(global.window.app.renderer.background.alpha, 0, "canvas transparent");
+    H.eq(createdVideos.length, 1, "one video element created (detached, not DOM)");
     const area = document.getElementById("game-area");
-    const vids = area.children.filter((c) => c.className === "bg-video");
-    H.eq(vids.length, 1, "exactly one video element");
+    H.eq(area.children.filter((c) => c.className === "bg-video").length, 0, "no DOM overlay");
+    createdVideos[0].dispatchEvent("canplay"); // metadata ready -> build sprite
+    H.assert(pb.bgVideo && pb.bgVideo.el, "video layer registered");
+    H.assert(pb.background && pb.background.visible !== false, "cover swapped for video sprite");
+    H.eq(global.window.app.renderer.background.alpha, 1, "canvas stays opaque");
     await new Promise((resolve, reject) => {
       const to = setTimeout(() => reject(new Error("audio decode timeout")), 5000);
       const prev = osu.onready;
@@ -178,21 +185,33 @@ test("headless: enabled video layer appears above nothing and unhides", async ()
       pb.load();
     });
     pb.start();
-    for (let f = 0; f < 30; f++) {
+    for (let f = 0; f < 150; f++) {
       ctx.currentTime += 0.016;
       pb.render(performance.now());
     }
-    H.eq(pb.background.visible, false, "cover hidden while video live");
+    // video clock follows audio (offset 0 here)
+    const want = pb.osu.audio.getPosition();
+    H.assert(want > 0, "past lead-in, got " + want);
+    H.assert(Math.abs(createdVideos[0].currentTime - want) < 0.2,
+      "video synced to audio, got " + createdVideos[0].currentTime + " vs " + want);
     pb.destroy();
   } finally {
     delete global.window.app;
+    document.createElement = docCreate;
   }
 });
 
-test("headless: video element error toasts once, game plays on", async () => {
+test("headless: video element error toasts, cover stays, game plays on", async () => {
   global.window.app = { view: { style: {} }, renderer: { background: { color: 0x111111, alpha: 1 } } };
   const toasts = [];
   global.showErrorToast = (m) => toasts.push(m);
+  const createdVideos = [];
+  const docCreate = document.createElement.bind(document);
+  document.createElement = (tag) => {
+    const el = docCreate(tag);
+    if (String(tag).toLowerCase() === "video") createdVideos.push(el);
+    return el;
+  };
   try {
     const game = makeGame({ backgroundVideo: true });
     const mp4bytes = fs.readFileSync(path.join(FIXDIR, "audio.mp3"));
@@ -211,14 +230,13 @@ test("headless: video element error toasts once, game plays on", async () => {
     const track = osu.tracks.find((t) => (t.metadata.Version || "").includes("Normal")) || osu.tracks[0];
     track.video = { filename: "bg.mp4", offset: 0 };
     const pb = new Playback(game, osu, track);
-    const area = document.getElementById("game-area");
-    const vid = area.children.find((c) => c.className === "bg-video");
-    H.assert(vid, "video element exists before failure");
+    H.eq(createdVideos.length, 1, "video element created");
+    const vid = createdVideos[0];
     vid.dispatchEvent("error"); // unplayable file
     H.assert(toasts.some((m) => m.indexOf("failed to play") !== -1), "explains failure, got " + JSON.stringify(toasts));
-    H.eq(area.children.filter((c) => c.className === "bg-video").length, 0, "dead element removed");
-    H.eq(global.window.app.renderer.background.alpha, 1, "canvas opaque again");
-    if (pb.background) H.eq(pb.background.visible, true, "cover restored instead of black void");
+    H.eq(pb.bgVideo, null, "dead layer unregistered");
+    H.eq(global.window.app.renderer.background.alpha, 1, "canvas stays opaque");
+    if (pb.background) H.eq(pb.background.visible, true, "cover intact");
     await new Promise((resolve, reject) => {
       const to = setTimeout(() => reject(new Error("audio decode timeout")), 5000);
       const prev = osu.onready;
@@ -241,6 +259,7 @@ test("headless: video element error toasts once, game plays on", async () => {
   } finally {
     delete global.window.app;
     delete global.showErrorToast;
+    document.createElement = docCreate;
   }
 });
 
