@@ -197,7 +197,7 @@ var API_PROVIDERS = {
 function currentProviders() {
     const gs = (typeof window !== "undefined" && window.gamesettings) || {};
     let browseId = gs.apiBrowsing || "sayobot";
-    let downloadId = gs.apiDownload || "sayobot";
+    let downloadId = gs.apiDownload || "mino";
     if (!API_PROVIDERS[browseId] || !API_PROVIDERS[browseId].browse) browseId = "sayobot";
     if (!API_PROVIDERS[downloadId]) downloadId = "sayobot";
     return {

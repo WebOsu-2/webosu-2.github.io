@@ -87,7 +87,7 @@ var defaultsettings = {
 
     // beatmap API providers (see scripts/config.js)
     apiBrowsing: "sayobot",
-    apiDownload: "sayobot",
+    apiDownload: "mino",
     backgroundVideo: false,
 
     easy: false,
