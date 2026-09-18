@@ -102,49 +102,34 @@ nav {
   flex-wrap: wrap;
 }
 
-/* ---- redesigned top bar ---- */
+/* ---- top bar: single 60px row (matches .statuslines offset) ---- */
 .topbar {
-  gap: 12px;
-  height: auto;
-  min-height: 60px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  height: 60px;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 
 .topbar .brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: #fff;
   text-decoration: none;
-  letter-spacing: 0.5px;
   white-space: nowrap;
-}
-
-.brand-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: conic-gradient(from 40deg, #ff66aa, #ffcc22, #88b300, #66ccff, #ff66aa);
-  box-shadow: 0 0 8px rgba(255, 102, 170, 0.8);
   flex-shrink: 0;
-}
-
-.brand-2 {
-  font-size: 12px;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 8px;
-  padding: 1px 7px;
 }
 
 .topbar-links {
   display: flex;
   align-items: center;
   gap: 2px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .topbar-links a {
@@ -163,9 +148,9 @@ nav {
 }
 
 .topbar-search {
-  flex: 1 1 180px;
-  max-width: 340px;
-  min-width: 150px;
+  flex: 1 1 160px;
+  max-width: 300px;
+  min-width: 120px;
 }
 
 .topbar-search form {
@@ -182,23 +167,7 @@ nav {
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-.icon-btn {
-  color: #fff;
-  text-decoration: none;
-  font-size: 19px;
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.icon-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
+  flex-shrink: 0;
 }
 
 body {
@@ -347,20 +316,24 @@ nav .brand {
     display: none;
   }
 
-  /* redesigned top bar stacks gracefully instead */
+  /* top bar stays single-row; links scroll instead of wrapping */
+  .topbar {
+    flex-direction: row;
+    align-items: center;
+  }
+
   .topbar .brand {
-    display: flex;
+    display: block;
   }
 
   .topbar-links {
-    order: 3;
-    flex-basis: 100%;
-    overflow-x: auto;
+    order: 0;
+    flex: 1 1 auto;
+    flex-basis: auto;
   }
 
   .topbar-search {
-    flex: 1 1 auto;
-    max-width: none;
+    flex: 0 0 auto;
   }
 
   .pseudo.button {
@@ -2041,68 +2014,7 @@ body:not(.sound-ready) .difficulty-item {
   width: 100%;
 }
 
-/* ---- homepage hero + section headers ---- */
-.hero {
-  border-radius: 16px;
-  padding: 34px 28px;
-  margin: 14px 0 6px;
-  background:
-    radial-gradient(1200px 300px at 15% -50%, rgba(255, 102, 170, 0.35), transparent 60%),
-    radial-gradient(900px 260px at 90% 130%, rgba(102, 204, 255, 0.25), transparent 60%),
-    #202027;
-  border: 1px solid #34343c;
-}
-
-.hero h1 {
-  margin: 0 0 6px;
-  font-size: 30px;
-  color: #fff;
-}
-
-.hero p {
-  margin: 0 0 16px;
-  color: #b9b9c4;
-  font-size: 14.5px;
-}
-
-.hero-search {
-  display: flex;
-  gap: 8px;
-  max-width: 560px;
-}
-
-.hero-search input[type="text"] {
-  flex: 1;
-  height: 44px;
-  border-radius: 12px;
-  border: 1px solid #4a4a55;
-  background: #141417;
-  color: #fff;
-  padding: 0 14px;
-  font-size: 15px;
-  outline: none;
-}
-
-.hero-search input[type="text"]:focus {
-  border-color: #b63258;
-}
-
-.hero-search button {
-  height: 44px;
-  border: none;
-  border-radius: 12px;
-  padding: 0 22px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #fff;
-  background: #b63258;
-  cursor: pointer;
-}
-
-.hero-search button:hover {
-  background: #d13d6b;
-}
-
+/* ---- homepage section headers ---- */
 .section-head {
   display: flex;
   align-items: baseline;
@@ -2116,16 +2028,6 @@ body:not(.sound-ready) .difficulty-item {
 
 .section-head .more {
   white-space: nowrap;
-}
-
-@media (max-width: 560px) {
-  .hero {
-    padding: 24px 18px;
-  }
-
-  .hero h1 {
-    font-size: 23px;
-  }
 }
 
 /* ---- search page ---- */
@@ -2201,161 +2103,3 @@ body:not(.sound-ready) .difficulty-item {
   font-size: 14px;
 }
 
-/* ---- osu-web style beatmap cards (overrides legacy rules above) ---- */
-.beatmap-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 12px;
-  margin-right: 0;
-  justify-content: stretch;
-}
-
-.beatmapbox {
-  display: block;
-  width: auto;
-  height: 118px;
-  margin: 0;
-  background: #232329;
-  border: 1px solid #34343c;
-  border-radius: 12px;
-  overflow: visible;
-  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
-  padding-left: 160px;
-}
-
-.beatmapbox:hover {
-  transform: translateY(-2px);
-  border-color: #b63258;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-}
-
-.beatmapcover {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 148px;
-  min-width: 148px;
-  height: 100%;
-  border-radius: 11px 0 0 11px;
-}
-
-.beatmapcover-overlay {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 148px;
-  height: 100%;
-  border-radius: 11px 0 0 11px;
-  background-image: linear-gradient(90deg, rgba(0, 0, 0, 0), rgba(35, 35, 41, 0.9));
-}
-
-.beatmaptitle,
-.beatmapartist,
-.beatmapcreator {
-  position: static;
-  width: auto;
-  padding: 0;
-  margin: 0 44px 0 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.beatmaptitle {
-  margin-top: 12px;
-  font-size: 16px;
-  font-style: normal;
-  font-weight: 700;
-}
-
-.beatmapartist {
-  margin-top: 2px;
-  font-size: 13px;
-  color: #c9c9d4;
-}
-
-.beatmapcreator {
-  margin-top: 2px;
-  font-size: 12px;
-  color: #8b8b96;
-  padding: 0;
-}
-
-/* info column takes remaining width; children above flow after the cover */
-.beatmap-difficulties {
-  position: static;
-  padding: 0;
-  margin: 8px 44px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.beatmapapproved {
-  top: 8px;
-  left: 8px;
-  font-size: 10px;
-}
-
-.beatmapvideo {
-  top: 8px;
-  right: 8px;
-}
-
-.beatmaplike {
-  top: 8px;
-  bottom: auto;
-  right: 10px;
-  font-size: 1.2em;
-}
-
-/* video badge sits below the heart */
-.beatmapvideo {
-  top: 36px;
-}
-
-.beatmaplength {
-  right: 12px;
-  bottom: 10px;
-  padding: 0;
-  color: #c9c9d4;
-}
-
-.beatmap-difficulties {
-  position: static;
-  padding: 0;
-  margin: auto 12px 10px 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.beatmap-difficulties .difficulty-ring {
-  width: 18px;
-  height: 18px;
-}
-
-.difficulty-box {
-  max-width: calc(100vw - 32px);
-}
-
-@media (max-width: 560px) {
-  .beatmap-list {
-    grid-template-columns: 1fr;
-  }
-
-  .beatmapcover,
-  .beatmapcover-overlay {
-    width: 104px;
-    min-width: 104px;
-  }
-
-  .beatmapbox {
-    padding-left: 116px;
-    height: 104px;
-  }
-
-  .beatmaptitle {
-    font-size: 14px;
-  }
-}
