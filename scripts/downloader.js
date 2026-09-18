@@ -131,6 +131,10 @@ function startdownload(box, onDone) {
     }
 
     const url = getDownloadUrl(box.sid);
+    try {
+        const prov = currentProviders();
+        console.info("[download]", prov.downloadId, backgroundVideoEnabled() ? "full" : "stripped", box.sid);
+    } catch (e) { /* ignore */ }
     box.downloading = true;
     box.classList.add("downloading");
 

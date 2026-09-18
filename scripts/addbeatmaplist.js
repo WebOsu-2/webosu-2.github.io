@@ -530,6 +530,9 @@ async function addBeatmapList(listurl, list, filter, maxsize, isCancelled, listO
     const browse = currentProviders().browse;
     const opts = listOpts || {};
     const limit = maxsize || opts.limit || 20;
+    try {
+        console.info("[beatmaps]", browse.id, opts.kind || "custom", "offset", opts.offset || 0);
+    } catch (e) { /* ignore */ }
 
     // request beatmap pack list
     let res;
