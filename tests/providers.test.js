@@ -82,7 +82,7 @@ test("providers: download variants incl. no-video forms", () => {
 test("providers: routing defaults to sayobot, nerinyan never browses", () => {
   delete window.gamesettings;
   H.eq(currentProviders().browseId, "sayobot", "default browse");
-  H.eq(currentProviders().downloadId, "sayobot", "default download");
+  H.eq(currentProviders().downloadId, "mino", "default download");
   window.gamesettings = { apiBrowsing: "nerinyan", apiDownload: "nerinyan" };
   H.eq(currentProviders().browseId, "sayobot", "nerinyan falls back for browse");
   H.eq(currentProviders().downloadId, "nerinyan", "nerinyan kept for download");

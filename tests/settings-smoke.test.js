@@ -53,7 +53,7 @@ test("settings: binder boots against the redesigned page ids", () => {
   setOptionPanel(); // must not throw
   H.eq(typeof gamesettings, "object", "gamesettings created");
   H.eq(gamesettings.apiBrowsing, "sayobot", "provider default");
-  H.eq(gamesettings.apiDownload, "sayobot", "download default");
+  H.eq(gamesettings.apiDownload, "mino", "download default");
   H.eq(gamesettings.backgroundVideo, false, "video default off");
 });
 
@@ -108,11 +108,11 @@ test("settings: blocked storage (private mode/shields) degrades gracefully", () 
   try {
     eval(fs.readFileSync(global.ROOT + "/scripts/settings.js", "utf8"));
     setOptionPanel(); // must not throw; falls back to defaults
-    H.eq(gamesettings.apiDownload, "sayobot", "defaults when unreadable");
+    H.eq(gamesettings.apiDownload, "mino", "defaults when unreadable");
     const dl = document.getElementById("apidownload-select");
-    dl.value = "mino";
+    dl.value = "nerinyan";
     dl.onchange(); // must not throw; applies for this session
-    H.eq(gamesettings.apiDownload, "mino", "session applies without storage");
+    H.eq(gamesettings.apiDownload, "nerinyan", "session applies without storage");
   } finally {
     global.localStorage = realStorage;
   }
