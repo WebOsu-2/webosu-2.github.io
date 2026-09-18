@@ -16,7 +16,7 @@
   <title>WebOsu 2.0!</title>
   <meta name="description"
     content="Play WebOsu – A browser-based rhythm game inspired by osu!std. Experience fast-paced gameplay with an extensive beatmap library. No downloads, play free online now!">
-  <link rel="canonical" href="http://webosu-2.github.io/" />
+  <link rel="canonical" href="https://webosu-2.github.io/" />
   <link rel="stylesheet" href="style/picnic.min.css" />
   <link rel="stylesheet" type="text/css" href="style/main.css" />
   <!-- <link href="//fonts.googleapis.com/css?family=Exo+2:400,600italic" rel="stylesheet" type="text/css"> -->
@@ -135,29 +135,32 @@
   
 
   <script>
-    // recently played
+    // recently played (section exists only on some pages; guard the lookup
+    // so a missing element can't throw inside the async callback)
     if (window.localforage) {
       let listhistory = document.getElementById("beatmap-list-history");
-      localforage.getItem("playhistory1000", function (err, item) {
-        if (err) {
-          listhistory.innerText = "Could not fetch play history.";
-          return;
-        }
-        if (item && item.length) {
-          item = item.reverse();
-          sid = [];
-          for (let i = 0; i < item.length; ++i) {
-            if (item[i].sid)
-              sid.push(item[i].sid);
+      if (listhistory) {
+        localforage.getItem("playhistory1000", function (err, item) {
+          if (err) {
+            listhistory.innerText = "Could not fetch play history.";
+            return;
           }
-          sid = [...new Set(sid)]; // uniq
-          for (let i = 0; i < 4 && i < sid.length; ++i)
-            addBeatmapSid(sid[i], listhistory)
-        }
-        else {
-          listhistory.innerText = "Play any beatmap to add them here.";
-        }
-      })
+          if (item && item.length) {
+            item = item.slice().reverse();
+            let sid = [];
+            for (let i = 0; i < item.length; ++i) {
+              if (item[i].sid)
+                sid.push(item[i].sid);
+            }
+            sid = [...new Set(sid)]; // uniq
+            for (let i = 0; i < 4 && i < sid.length; ++i)
+              addBeatmapSid(sid[i], listhistory)
+          }
+          else {
+            listhistory.innerText = "Play any beatmap to add them here.";
+          }
+        })
+      }
     }
     // new
     addBeatmapList("https://api.sayobot.cn/beatmaplist?0=20&1=0&2=2&5=1",

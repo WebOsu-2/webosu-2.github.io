@@ -95,27 +95,34 @@
   </div>
   <script>
     let url = new URL(window.location.href);
-    let keyword = url.searchParams.get("q");
+    let keyword = (url.searchParams.get("q") || "").trim();
     //document.getElementById("inputtext").value = keyword;
     var cur = 0;
-    if (keyword == parseInt(keyword, 10)) {
+    if (!keyword) {
+      document.getElementById("beatmap-list").innerText =
+        "Type a keyword or beatmap id to search.";
+      document.getElementById("btnmore").setAttribute("style", "display:none;");
+    } else if (keyword == parseInt(keyword, 10)) {
       // is sid
       addBeatmapSid(keyword);
+      document.getElementById("btnmore").setAttribute("style", "display:none;");
     } else {
-      // search keyword
+      // search keyword (must be URL-encoded: spaces/symbols broke the API url)
+      let q = encodeURIComponent(keyword);
       addBeatmapList(
         "https://api.sayobot.cn/beatmaplist?0=20&1=0&2=4&3=" +
-        keyword +
+        q +
         "&5=1"
       );
       cur = 20;
     }
     document.getElementById("btnmore").onclick = function () {
+      if (!keyword || keyword == parseInt(keyword, 10)) return;
       addBeatmapList(
         "https://api.sayobot.cn/beatmaplist?0=20&1=" +
         cur +
         "&2=4&3=" +
-        keyword +
+        encodeURIComponent(keyword) +
         "&5=1"
       );
       cur += 20;

@@ -235,9 +235,9 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                     self.game.down = false;
                     let menu = document.getElementById("pause-menu");
                     menu.removeAttribute("hidden");
-                    btn_continue = document.getElementById("pausebtn-continue");
-                    btn_retry = document.getElementById("pausebtn-retry");
-                    btn_quit = document.getElementById("pausebtn-quit");
+                    let btn_continue = document.getElementById("pausebtn-continue");
+                    let btn_retry = document.getElementById("pausebtn-retry");
+                    let btn_quit = document.getElementById("pausebtn-quit");
                     btn_continue.onclick = function () {
                         self.resume();
                         btn_continue.onclick = null;
@@ -454,7 +454,7 @@ define(["osu", "playerActions", "SliderMesh", "overlay/score", "overlay/volume",
                         file = self.track.events[1][2];
                     }
                     file = file.substr(1, file.length - 2);
-                    entry = osu.zip.getChildByName(file);
+                    var entry = osu.zip.getChildByName(file);
                     if (entry) {
                         entry.getBlob("image/jpeg", function (blob) {
                             const reader = new FileReader();

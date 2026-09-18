@@ -31,7 +31,8 @@ function launchOSU(osu, beatmapid, version) {
     resolution: window.devicePixelRatio || 1,
     autoDensity: true,
   }));
-  app.renderer.autoResize = true;
+  // (Pixi v7: canvas auto-resizes via resize() + autoDensity; the old v6
+  // autoResize flag is a no-op and only confuses readers.)
   app.renderer.background.color = 0x111111;
 
   // Add a resize listener to update the canvas dimensions dynamically
@@ -52,11 +53,12 @@ function launchOSU(osu, beatmapid, version) {
 
   // remember where the page is scrolled to
   let scrollTop = document.body.scrollTop;
-  // get ready for gaming
-  document.addEventListener("contextmenu", function (e) {
+  // block right-click menu in game (removed again on quit)
+  let contextmenuHandler = function (e) {
     e.preventDefault();
     return false;
-  });
+  };
+  document.addEventListener("contextmenu", contextmenuHandler);
   document.body.classList.add("gaming");
   // update game settings
   if (window.gamesettings) {
@@ -121,6 +123,9 @@ function launchOSU(osu, beatmapid, version) {
           else { try { list[i].pause(); } catch (e) {} try { list[i].remove(); } catch (e) {} }
         } catch (e) { /* ignore */ }
       }
+    } catch (e) { /* ignore */ }
+    try {
+      if (contextmenuHandler) document.removeEventListener("contextmenu", contextmenuHandler);
     } catch (e) { /* ignore */ }
     // this shouldn't be called before playback is cleaned up
     // restore webpage state

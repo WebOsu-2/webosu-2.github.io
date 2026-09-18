@@ -39,7 +39,6 @@ function startpreview(box) {
     // Create audio element and source for the preview
     const audio = document.createElement("audio");
     const source = document.createElement("source");
-    console.log("pazinga");
     source.src = getPreviewUrl(box.sid);
     source.type = "audio/mpeg";
     audio.appendChild(source);

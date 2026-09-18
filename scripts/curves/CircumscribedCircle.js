@@ -58,10 +58,11 @@ function() {
         endAng = (endAng > startAng) ? startAng + arcAng : startAng - arcAng;
 
         // calculate points
-        var step = Math.floor(hit.pixelLength / CURVE_POINTS_SEPERATION);
+        var sep = (typeof CURVE_POINTS_SEPERATION !== "undefined") ? CURVE_POINTS_SEPERATION : 3;
+        var step = Math.floor(hit.pixelLength / sep);
         var curve = new Array(step + 1);
 
-        pointAt = function(t) {
+        var pointAt = function(t) {
             if (t > 1) t = 1;
             var ang = lerp(startAng, endAng, t);
             return {

@@ -158,35 +158,47 @@
 
     var list = document.getElementById("history-list");
     function addEntry(summary) {
+      summary = summary || {};
       let tr = document.createElement("tr");
       list.appendChild(tr);
       function nexttd(content) {
         let td = document.createElement("td");
         tr.appendChild(td);
-        if (content.tagName) td.appendChild(content);
-        else td.innerText = content;
+        if (content && content.tagName) td.appendChild(content);
+        else td.innerText = (content === undefined || content === null) ? "-" : content;
       }
+      // columns: Player | Beatmap | Combo | Score | Accuracy | Mods | Time
+      nexttd("You");
       let title = document.createElement("a");
-      title.innerText = summary.title + " [" + summary.version + "]";
-      title.href = "search.html?q=" + (summary.sid || summary.title);
+      title.innerText = (summary.title || "Unknown") + " [" + (summary.version || "?") + "]";
+      title.href = "search.html?q=" + encodeURIComponent(summary.sid || summary.title || "");
       nexttd(title);
       nexttd(summary.combo);
       nexttd(summary.score);
-      nexttd(summary.grade);
+      // show accuracy with grade, tolerating old entries without acc
+      nexttd(summary.acc ? (summary.acc + (summary.grade ? " (" + summary.grade + ")" : "")) : (summary.grade || "-"));
       nexttd(summary.mods);
-      nexttd(new Date(summary.time).customFormat("#D# #MMM# #hhhh#:#mm#"));
+      let t = summary.time ? new Date(summary.time) : null;
+      nexttd(t && !isNaN(t) ? t.customFormat("#D# #MMM# #hhhh#:#mm#") : "-");
     }
     if (window.localforage) {
       localforage.getItem("playhistory1000", function (err, item) {
-        if (!err && item && item.length) {
-          item = item.reverse();
-          for (let i = 0; i < item.length; ++i) {
-            addEntry(item[i]);
-          }
+        if (err || !item || !item.length) {
+          let tr = document.createElement("tr");
+          let td = document.createElement("td");
+          td.setAttribute("colspan", "7");
+          td.innerText = err ? "Could not load play history." : "No plays yet. Play any beatmap to add them here.";
+          tr.appendChild(td);
+          list.appendChild(tr);
+          return;
+        }
+        item = item.slice().reverse();
+        for (let i = 0; i < item.length; ++i) {
+          addEntry(item[i]);
         }
       });
     } else {
-      alert("localforage is not supported.");
+      list.innerText = "Play history needs local storage support.";
     }
   </script>
 </body>

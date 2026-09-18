@@ -81,7 +81,7 @@ function(_, OsuAudio, LinearBezier, CircumscribedCircle) {
                         if (t.millisecondsPerBeat < 0) {
                             t.uninherited = 0;
                         }
-                        this.timingPoints.push(t);
+                        self.timingPoints.push(t);
                         break;
                     case "[Colours]":
                         var parts = line.split(":");

@@ -387,10 +387,28 @@ var NSaddBeatmapList = {
 // Note that some beatmaps may not contain std mode, so we request more maps than we need
 async function addBeatmapList(listurl, list, filter, maxsize) {
     if (!list) list = document.getElementById("beatmap-list");
+    if (!list) {
+        console.error("addBeatmapList: no target list element");
+        return;
+    }
 
     // request beatmap pack list
-    const response = await fetch(listurl);
-    const res = await response.json();
+    let res;
+    try {
+        const response = await fetch(listurl);
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        res = await response.json();
+    } catch (error) {
+        console.error("Error fetching beatmap list:", error);
+        let note = document.createElement("div");
+        note.innerText = "Could not load beatmaps (network error). Please retry.";
+        list.appendChild(note);
+        return;
+    }
+    if (!res || !Array.isArray(res.data)) {
+        console.error("Error fetching beatmap list: bad response");
+        return;
+    }
     const box = [];
 
     if (filter && res.data) {
@@ -405,16 +423,33 @@ async function addBeatmapList(listurl, list, filter, maxsize) {
         box.push(NSaddBeatmapList.addpreviewbox(res.data[i], list));
     }
 
-    // async add more info
-    for (let i = 0; i < res.data.length; ++i) {
-        box[i].sid = res.data[i].sid;
-        await NSaddBeatmapList.requestMoreInfo(box[i]);
-        box[i].onclick = function (e) {
-            // this is effective only when box.data is available
-            createDifficultyList(box[i], e);
-            startdownload(box[i]);
-        };
+    // fetch extra info concurrently with a small pool.
+    // (Previously serial: one slow round-trip per beatmap.)
+    let next = 0;
+    const CONCURRENCY = 5;
+    async function worker() {
+        while (next < res.data.length) {
+            const i = next++;
+            const b = box[i];
+            b.sid = res.data[i].sid;
+            try {
+                await NSaddBeatmapList.requestMoreInfo(b);
+            } catch (e) {
+                console.error(e);
+            }
+            // bind after info arrives (difficulty menu needs box.data);
+            // IIFE avoids the classic loop-closure bug.
+            b.onclick = (function (bb) {
+                return function (e) {
+                    createDifficultyList(bb, e);
+                    startdownload(bb);
+                };
+            })(b);
+        }
     }
+    const workers = [];
+    for (let w = 0; w < Math.min(CONCURRENCY, res.data.length); ++w) workers.push(worker());
+    await Promise.all(workers);
 
     if (window.beatmaplistLoadedCallback) {
         window.beatmaplistLoadedCallback();

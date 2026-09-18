@@ -189,6 +189,7 @@ function setOptionPanel() {
       // c1.checked = false;
       c2.checked = false;
       c3.checked = false;
+      gamesettings.loadToGame();
       saveToLocal();
       checkdefault(c1, item1);
       checkdefault(c2, item2);
@@ -201,6 +202,7 @@ function setOptionPanel() {
       c1.checked = false;
       // c2.checked = false;
       c3.checked = false;
+      gamesettings.loadToGame();
       saveToLocal();
       checkdefault(c1, item1);
       checkdefault(c2, item2);
@@ -231,7 +233,7 @@ function setOptionPanel() {
     range.addEventListener("mouseup",function () {
       indicator.setAttribute("hidden", "");
     });
-    range.addEventListener("touchdown", function () {
+    range.addEventListener("touchstart", function () {
       indicator.removeAttribute("hidden");
     });
     range.addEventListener("touchend",function () {
@@ -373,11 +375,17 @@ function setOptionPanel() {
 
 window.addEventListener("DOMContentLoaded", setOptionPanel);
 
-// press any key to search
+// press any key to search (only on pages with a search box; never steal
+// focus or throw on pages without inputs)
 window.onkeydown = function (e) {
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (!e || e.ctrlKey || e.altKey || e.metaKey) return;
   if (e.key.length == 1 && e.key != " ") {
-    let textinput = document.getElementsByTagName("input")[0];
+    let inputs = document.getElementsByTagName("input");
+    if (!inputs || !inputs.length) return;
+    let textinput = inputs[0];
+    if (document.activeElement === textinput) return;
+    // only text-like inputs can receive the keystroke
+    if (textinput.type && textinput.type !== "text" && textinput.type !== "search") return;
     textinput.focus();
   }
 };

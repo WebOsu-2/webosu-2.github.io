@@ -1,6 +1,6 @@
 define(["curves/EqualDistanceMultiCurve", "curves/Bezier2"],
 function(EqualDistanceMultiCurve, Bezier2) {
-    class LinearBeizer extends EqualDistanceMultiCurve {
+    class LinearBezier extends EqualDistanceMultiCurve {
         constructor(hit, line) {
             super(hit); // calls the EqualDistanceMultiCurve constructor
 
@@ -33,5 +33,5 @@ function(EqualDistanceMultiCurve, Bezier2) {
             this.init(beziers);
         }
     }
-    return LinearBeizer;
+    return LinearBezier;
 });

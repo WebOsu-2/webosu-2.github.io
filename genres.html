@@ -119,9 +119,16 @@
   </div>
   <script>
     let btns = document.getElementsByClassName("selitem");
+    function attrNum(el, name) {
+      // attributes hold small integer ids (or are absent); never eval them.
+      let v = el.getAttribute(name);
+      if (v === null || v === "") return null;
+      let n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
     function search(genre, lang) {
       // clear list
-      list = document.getElementById("beatmap-list");
+      let list = document.getElementById("beatmap-list");
       while (list.firstChild) {
         list.removeChild(list.firstChild);
       }
@@ -145,8 +152,8 @@
       };
       // update buttons state
       for (let i = 0; i < btns.length; ++i) {
-        let g = eval(btns[i].getAttribute("genre"));
-        let l = eval(btns[i].getAttribute("lang"));
+        let g = attrNum(btns[i], "genre");
+        let l = attrNum(btns[i], "lang");
         if (g == genre || l == lang) {
           btns[i].classList.add("active");
         } else {
@@ -159,8 +166,8 @@
     search(curgenre, curlang);
     for (let i = 0; i < btns.length; ++i) {
       btns[i].onclick = function () {
-        let g = eval(btns[i].getAttribute("genre"));
-        let l = eval(btns[i].getAttribute("lang"));
+        let g = attrNum(btns[i], "genre");
+        let l = attrNum(btns[i], "lang");
         if (g) curgenre = g;
         if (l) curlang = l;
         search(curgenre, curlang);
