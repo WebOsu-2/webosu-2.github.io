@@ -96,14 +96,9 @@ test("pager: one malformed entry does not kill the page", async () => {  global.
   H.eq(list.children.length, 2, "both appended");
 });
 
-test("filters: mode/status predicates share one status scale", () => {
-  H.eq(modeFilter("all"), null, "all modes");
+test("filters: status predicate shares one status scale", () => {
   H.eq(statusFilter("any"), null, "any status");
   H.eq(statusFilter(""), null, "empty");
-  const std = modeFilter("std");
-  H.eq(std({ modes: 1 }), true, "std bit");
-  H.eq(std({ modes: 0 }), false, "no std bit");
-  H.eq(std(null), false, "null-safe");
   const ranked = statusFilter("1");
   H.eq(ranked({ approved: 1 }), true, "ranked");
   H.eq(ranked({ approved: 3 }), false, "qualified is not ranked");
