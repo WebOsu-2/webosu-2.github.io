@@ -101,12 +101,11 @@ function launchOSU(osu, beatmapid, version) {
   }
   function setHardwareCursor() {
     try {
-      // Match the in-game sprite presence (~0.3x of the 250px texture),
-      // rendered at device pixels so HiDPI displays don't upscale a
-      // small bitmap (that blur was the low-quality look). Browsers cap
-      // cursor bitmaps (~128px), so clamp there.
+      // Sensible pointer size that still honors cursorSize: 48px at 1.0x,
+      // rendered at device pixels so HiDPI displays stay sharp (browsers
+      // cap cursor bitmaps around ~128px, hence the clamp).
       const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-      const size = Math.max(32, Math.min(128, Math.round(75 * game.cursorSize * dpr)));
+      const size = Math.max(24, Math.min(128, Math.round(48 * game.cursorSize * dpr)));
       const img = new Image();
       img.onload = function () {
         try {
