@@ -91,6 +91,34 @@ function launchOSU(osu, beatmapid, version) {
   var pMainPage = document.getElementById("main-page");
   var pNav = document.getElementById("main-nav");
   pGameArea.appendChild(app.view);
+  // rasterize the skin cursor at the chosen size so the hardware cursor
+  // honors cursorSize continuously (the old 3-bucket .cur files are only
+  // a fallback when the image can't load)
+  function setHardwareCursorFallback() {
+    if (game.cursorSize < 0.65) pGameArea.classList.add("showhwmousetiny");
+    else if (game.cursorSize < 0.95) pGameArea.classList.add("showhwmousesmall");
+    else pGameArea.classList.add("showhwmousemedium");
+  }
+  function setHardwareCursor() {
+    try {
+      // matches the in-game sprite presence (~0.3x of the 250px texture)
+      const size = Math.max(24, Math.min(128, Math.round(75 * game.cursorSize)));
+      const img = new Image();
+      img.onload = function () {
+        try {
+          const c = document.createElement("canvas");
+          c.width = c.height = size;
+          const g = c.getContext("2d");
+          g.clearRect(0, 0, size, size);
+          g.drawImage(img, 0, 0, size, size);
+          const hot = Math.floor(size / 2);
+          pGameArea.style.cursor = `url("${c.toDataURL()}") ${hot} ${hot}, crosshair`;
+        } catch (e) { setHardwareCursorFallback(); }
+      };
+      img.onerror = setHardwareCursorFallback;
+      img.src = "sprites/cursor.png";
+    } catch (e) { setHardwareCursorFallback(); }
+  }
   if (game.autoplay || game.autopilot) {
     pGameArea.classList.remove("shownomouse");
     pGameArea.classList.remove("showhwmousemedium");
@@ -98,10 +126,7 @@ function launchOSU(osu, beatmapid, version) {
     pGameArea.classList.remove("showhwmousetiny");
   } else if (game.showhwmouse) {
     pGameArea.classList.remove("shownomouse");
-    if (game.cursorSize < 0.65) pGameArea.classList.add("showhwmousetiny");
-    else if (game.cursorSize < 0.95)
-      pGameArea.classList.add("showhwmousesmall");
-    else pGameArea.classList.add("showhwmousemedium");
+    setHardwareCursor();
   } else {
     pGameArea.classList.add("shownomouse");
     pGameArea.classList.remove("showhwmousemedium");
@@ -116,6 +141,7 @@ function launchOSU(osu, beatmapid, version) {
   // set quit callback
   window.quitGame = function () {
     if (!window.app) return; // already quit / never launched
+    try { pGameArea.style.cursor = ""; } catch (e) { /* ignore */ }
     // Hard-stop any gameplay audio and preview <audio> elements so
     // quitting without reload never leaves sound playing/desynced.
     try {

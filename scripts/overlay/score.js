@@ -91,6 +91,7 @@
             this.scoreDigits = this.newSpriteArray(10, 0.4, 0xddffff); // 9999999999
             this.comboDigits = this.newSpriteArray(6, 0.2, 0xddffff);   // 99999x
             this.accuracyDigits = this.newSpriteArray(7, 0.2, 0xddffff); // 100.00%
+            this.charspacing = 10; // in texture pixels (missing this NaNs every digit position)
             this.HPbar = this.newSpriteArray(3, 0.5);
             this.HPbar[0].texture = Skin["hpbarleft.png"];
             this.HPbar[1].texture = Skin["hpbarright.png"];
