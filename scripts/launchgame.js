@@ -101,8 +101,12 @@ function launchOSU(osu, beatmapid, version) {
   }
   function setHardwareCursor() {
     try {
-      // matches the in-game sprite presence (~0.3x of the 250px texture)
-      const size = Math.max(24, Math.min(128, Math.round(75 * game.cursorSize)));
+      // Match the in-game sprite presence (~0.3x of the 250px texture),
+      // rendered at device pixels so HiDPI displays don't upscale a
+      // small bitmap (that blur was the low-quality look). Browsers cap
+      // cursor bitmaps (~128px), so clamp there.
+      const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+      const size = Math.max(32, Math.min(128, Math.round(75 * game.cursorSize * dpr)));
       const img = new Image();
       img.onload = function () {
         try {
@@ -110,6 +114,8 @@ function launchOSU(osu, beatmapid, version) {
           c.width = c.height = size;
           const g = c.getContext("2d");
           g.clearRect(0, 0, size, size);
+          g.imageSmoothingEnabled = true;
+          g.imageSmoothingQuality = "high";
           g.drawImage(img, 0, 0, size, size);
           const hot = Math.floor(size / 2);
           pGameArea.style.cursor = `url("${c.toDataURL()}") ${hot} ${hot}, crosshair`;
