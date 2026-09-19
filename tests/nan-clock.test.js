@@ -84,7 +84,6 @@ test("nan: audio clock falls back to last good instead of NaN", async () => {
 });
 
 test("nan: progress overlay keeps last text on NaN time", () => {
-  global.PIXI = H.makePixiStub();
   const ProgressOverlay = H.loadModule("scripts/overlay/progress.js").default;
   const o = new ProgressOverlay({ width: 800, height: 600 }, -1500, 90000);
   o.update(1000);
@@ -100,7 +99,7 @@ test("nan: hit objects with non-finite time/coords are dropped", () => {
   global.game = { globalOffset: 0 };
   if (!global.__audioCtxStub) global.__audioCtxStub = H.makeAudioContextStub({ currentTime: 0 });
   global.AudioContext = function () { return global.__audioCtxStub; };
-  global._ = global._ || require("../scripts/lib/underscore.js");
+  global._ = global._ || H.ensureUnderscore();
   const Track = H.loadModule("scripts/osu.js").Track;
   const MAP = `osu file format v14
 [General]

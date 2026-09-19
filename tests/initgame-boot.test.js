@@ -10,16 +10,16 @@ test("esm: entry import boots window.Osu/Playback/game", async () => {
   // files overwrite globals, and modules evaluate on first require — which
   // happens below — so setup must immediately precede the import.
   global.window = global;
-  global._ = require("../scripts/lib/underscore.js");
+  global._ = H.ensureUnderscore();
   if (!global.__audioCtxStub) global.__audioCtxStub = H.makeAudioContextStub({ currentTime: 0 });
   global.AudioContext = function () { return global.__audioCtxStub; };
-  global.PIXI = {
-    utils: { isWebGLSupported: () => true },
-    Container: class {},
-    Assets: { load: async () => ({ "fonts/venera.fnt": {}, "sprites.json": { textures: {} } }) },
-    Sprite: function Sprite() {},
-    settings: {},
-  };
+  // Asset loads fail headlessly (relative URLs); swallow only those so a
+  // real crash still fails loudly.
+  process.on("unhandledRejection", function ignoreAssetLoads(e) {
+    const msg = String((e && e.message) || e);
+    if (/venera|suits|sprites\.json|fetch|load|URL|Failed/i.test(msg)) return;
+    throw e;
+  });
   global.sounds = {
     whenLoaded: null,
     // synchronous on purpose: a deferred callback could fire after later

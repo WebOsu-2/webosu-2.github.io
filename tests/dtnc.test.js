@@ -10,7 +10,7 @@ global.game = { globalOffset: 0 };
 if (!global.__audioCtxStub) global.__audioCtxStub = H.makeAudioContextStub({ currentTime: 0 });
 global.AudioContext = function () { return global.__audioCtxStub; };
 
-global._ = global._ || require("../scripts/lib/underscore.js");
+global._ = global._ || H.ensureUnderscore();
 const exposed = H.loadModule("scripts/osu.js");
 const Track = exposed.Track;
 const scale = exposed.default.scaleChartForRate;
