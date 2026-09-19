@@ -62,10 +62,6 @@
     <div class="main-content">
       <div class="search-head">
         <h1>Search beatmaps</h1>
-        <form class="search-bar" action="search.html">
-          <input type="text" name="q" id="search-input" placeholder="Song, artist, mapper or set id…" aria-label="Search beatmaps" />
-          <button type="submit">Search</button>
-        </form>
         <div class="search-filters" id="search-filters" hidden>
           <label>Mode
             <select id="filter-mode">
@@ -126,7 +122,6 @@
       var keyword = (url.searchParams.get("q") || "").trim();
       var listEl = document.getElementById("beatmap-list");
       var moreBtn = document.getElementById("btnmore");
-      document.getElementById("search-input").value = keyword;
       if (!keyword) {
         listEl.innerText = "Type a keyword or beatmap id to search.";
         moreBtn.style.display = "none";
