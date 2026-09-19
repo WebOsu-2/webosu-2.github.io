@@ -210,15 +210,8 @@ function curvePoints(curve0, radius) {
         let dy2 = curve[i + 1].y - curve[i].y;
         // Skip joints on degenerate (zero-length) segments: their
         // direction is undefined and previously produced NaN arcs.
-        const l1 = Math.hypot(dx1, dy1);
-        const l2 = Math.hypot(dx2, dy2);
-        if (l1 < 1e-6 || l2 < 1e-6) continue;
-        // Skip effectively-straight joints: the quads already tile cleanly,
-        // and the sliver-thin fan/bevel triangles would rasterize as
-        // streaks along the slider side.
-        const sin = (dx1 * dy2 - dx2 * dy1) / (l1 * l2);
-        if (Math.abs(sin) < 1e-3) continue;
-        let t = sin > 0 ? 1 : -1;
+        if (Math.hypot(dx1, dy1) < 1e-6 || Math.hypot(dx2, dy2) < 1e-6) continue;
+        let t = dx1 * dy2 - dx2 * dy1;
         // The joint's curve parameter goes on the fan: the shader clips
         // snake in/out per-fragment on it, so fans left at t=0 would pop
         // in ahead of the snake head and the slider would fall apart.
@@ -290,11 +283,7 @@ export default class SliderMesh extends PIXI.Container {
         P.ncolors = colors.length;
         const td = newTextureData(colors, SliderTrackOverride, SliderBorder);
         P.sliderTexture = new PIXI.Texture({
-            // the gradient buffer is already premultiplied (RGB *= A
-            // above): declaring it avoids a second premultiply on upload,
-            // which darkened/saturated every slider (v8 premultiplies
-            // "premultiply-alpha-on-upload" data by default)
-            source: new PIXI.BufferImageSource({ resource: td.data, width: td.width, height: td.height, alphaMode: 'premultiplied-alpha' }),
+            source: new PIXI.BufferImageSource({ resource: td.data, width: td.width, height: td.height }),
         });
         if (!P.glProgram) {
             P.glProgram = new PIXI.GlProgram({ name: 'slider', vertex: vertexSrc, fragment: fragmentSrc });
