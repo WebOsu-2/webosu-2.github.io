@@ -63,12 +63,6 @@
       <div class="search-head">
         <h1>Search beatmaps</h1>
         <div class="search-filters" id="search-filters" hidden>
-          <label>Mode
-            <select id="filter-mode">
-              <option value="all">All modes</option>
-              <option value="std" selected>osu!std only</option>
-            </select>
-          </label>
           <label>Status
             <select id="filter-status">
               <option value="any">Any status</option>
@@ -135,20 +129,9 @@
       }
       document.getElementById("search-filters").removeAttribute("hidden");
       function currentFilter() {
-        var mode = document.getElementById("filter-mode").value;
         var status = document.getElementById("filter-status").value;
-        var fns = [];
-        var mf = (typeof modeFilter === "function") ? modeFilter(mode) : null;
         var sf = (typeof statusFilter === "function") ? statusFilter(status) : null;
-        if (mf) fns.push(mf);
-        if (sf) fns.push(sf);
-        if (!fns.length) return null;
-        return function (t) {
-          for (var i = 0; i < fns.length; ++i) {
-            if (!fns[i](t)) return false;
-          }
-          return true;
-        };
+        return sf;
       }
       var pager = createBeatmapPager(listEl, moreBtn, function (off) {
         var r = buildListUrl("search", off, { limit: 20, keyword: keyword });
@@ -156,7 +139,6 @@
         return r;
       });
       pager.loadMore();
-      document.getElementById("filter-mode").onchange = function () { pager.reset(); };
       document.getElementById("filter-status").onchange = function () { pager.reset(); };
     })();
   </script>

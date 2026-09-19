@@ -651,11 +651,6 @@ function statusFilter(code) {
     if (!Number.isFinite(n)) return null;
     return function (t) { return t && t.approved === n; };
 }
-function modeFilter(mode) {
-    if (!mode || mode === "all") return null;
-    if (mode === "std") return function (t) { return !!t && ((t.modes & 1) !== 0); };
-    return null;
-}
 
 // ---- Shared paginated list helper ----
 // Replaces the copy-pasted `var cur / btnmore.onclick` blocks on every list
