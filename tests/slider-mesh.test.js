@@ -90,8 +90,7 @@ test("slider-mesh: joint/end-cap fans carry joint t for snake clipping", () => {
   }
 });
 
-test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {
-  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
+test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   initMesh(m);
   m.sync(); // meshes build lazily once shared state exists
   H.assert(m.bodyMesh && m.capMesh, "both meshes built");
@@ -108,4 +107,21 @@ test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {
   H.eq(bu().dt, 0, "full slider");
   H.eq(m.capMesh.visible, false, "cap hidden when full");
   m.destroy();
+});
+
+test("slider-mesh: near-straight joints emit no sliver triangles", () => {
+  // A kink too small to see must not add join geometry: those slivers
+  // rasterize as streaks along the slider side.
+  const straight = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
+  const kinked = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0.05 }], 200, true);
+  const count = (m) => m.bodyGeom.indexBuffer.data.length;
+  H.eq(count(kinked), count(straight), "kink adds no indices");
+});
+
+test("slider-mesh: gradient texture uploads as premultiplied", () => {
+  // The gradient buffer is already premultiplied; v8 premultiplies
+  // "premultiply-alpha-on-upload" data again (dark/saturated sliders).
+  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+  initMesh(m);
+  H.eq(m.sliderTexture.source.alphaMode, "premultiplied-alpha", "declared truthfully");
 });
