@@ -10,7 +10,8 @@
 *   
 */
 
- // Score overlay (ES module). PIXI/localforage are globals.
+ // Score overlay (ES module). localforage is a global.
+import * as PIXI from '../lib/pixi.mjs';
     function addPlayHistory(summary) {
         if (!window.playHistory1000) {
             window.playHistory1000 = [];

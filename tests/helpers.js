@@ -25,13 +25,23 @@ function finiteArray(arr, msg) {
 }
 
 // ---------- module loader ----------
-// Game code is native ES modules (see scripts/*.js). require() loads them
+// Game code is native ES modules (see scripts/*.js, marked by
+// scripts/package.json {"type":"module"}). require() loads them
 // synchronously (Node 22.12+; the repo's CI uses LTS). Globals the modules
 // read (_, PIXI, AudioContext, ...) must be installed BEFORE the first
 // require of each file; modules evaluate once per process.
 // Returns the module namespace; default exports via `.default`.
 function loadModule(relPath) {
   return require(path.join(ROOT, relPath));
+}
+// UMD vendor libs (underscore) take the browser branch only under sloppy
+// indirect eval; require() would force the broken CJS branch instead.
+function ensureUnderscore() {
+  if (global._) return global._;
+  const src = fs.readFileSync(path.join(ROOT, "scripts/lib/underscore.js"), "utf8");
+  (0, eval)(src);
+  if (!global._) throw new Error("underscore failed to define global _");
+  return global._;
 }
 
 // ---------- DOM stub ----------
@@ -90,6 +100,8 @@ function makeElement(tag = "div") {
     },
     focus() {},
     click() { if (typeof this.onclick === "function") this.onclick({}); },
+    getContext() { return null; },
+    load() {},
     set innerText(v) { this._text = String(v); },
     get innerText() { return this._text; },
     set innerHTML(v) { this._html = String(v); this.children = []; },
@@ -182,57 +194,4 @@ function makeAudioContextStub(opts = {}) {
   return ctx;
 }
 
-// ---------- PIXI stub (just enough for SliderMesh geometry) ----------
-function makePixiStub() {
-  class Geometry {
-    constructor() { this.attrs = {}; this.index = null; }
-    addAttribute(name, arr, size) { this.attrs[name] = { data: Array.from(arr), size }; return this; }
-    addIndex(idx) { this.index = Array.from(idx); return this; }
-    dispose() {}
-  }
-  class Container {
-    constructor() {
-      this.children = []; this.visible = true; this.alpha = 1;
-      this.x = 0; this.y = 0;
-      this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
-      this.position = { x: 0, y: 0, set(x, y) { this.x = x; this.y = y; } };
-    }
-    addChild(c) { this.children.push(c); return c; }
-    addChildAt(c, i) { this.children.splice(i, 0, c); return c; }
-    removeChild(c) { const i = this.children.indexOf(c); if (i !== -1) this.children.splice(i, 1); return c; }
-    destroy() { this.children = []; }
-  }
-  class Sprite extends Container {
-    constructor() {
-      super();
-      this.anchor = { x: 0.5, y: 0.5, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
-      this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
-      this.rotation = 0;
-      this.tint = 0xffffff;
-    }
-    bringToFront() {}
-  }
-  class BitmapText extends Container {
-    constructor() {
-      super();
-      this.anchor = { x: 0.5, y: 0.5, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
-      this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y === undefined ? x : y; } };
-      this.text = "";
-      this.tint = 0xffffff;
-    }
-  }
-  return {
-    Geometry, Container, Sprite, BitmapText,
-    Texture: { from: () => ({ width: 4, height: 4, baseTexture: { valid: true } }), fromBuffer: () => ({}) },
-    Assets: { load: async () => ({ width: 1280, height: 720, baseTexture: { valid: true } }) },
-    filters: {},
-    Shader: { from: () => ({}) },
-    State: { for2d: () => ({}) },
-    settings: {},
-    DRAW_MODES: { TRIANGLES: 4 },
-    BLEND_MODES: { NORMAL: 0, ADD: 1 },
-    utils: { isWebGLSupported: () => true },
-  };
-}
-
-module.exports = { assert, eq, deepEq, finiteArray, loadModule, makeElement, createDom, installDom, makeAudioContextStub, makePixiStub, ROOT };
+module.exports = { assert, eq, deepEq, finiteArray, loadModule, ensureUnderscore, makeElement, createDom, installDom, makeAudioContextStub, ROOT };

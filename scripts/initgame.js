@@ -1,25 +1,18 @@
 // Game entry module (loaded as <script type="module"> by jsloader after
-// the classic vendor scripts). Globals used: PIXI, _, sounds, localforage,
+// the classic vendor scripts). Globals used: _, sounds, localforage,
 // document, window. Exposes window.Osu / window.Playback / window.game.
 import Osu from './osu.js';
 import Playback from './playback.js';
+import * as PIXI from './lib/pixi.mjs';
+// Bridge for the remaining classic scripts (launchgame.js): v8 ships no
+// global build, so expose the module namespace where they expect it.
+// (Difficulty launch is gated on window.scriptReady below, so this is
+// always set before first use.)
+window.PIXI = PIXI;
 main();
 function main() {
-    // check for WebGL
-    if (!PIXI || !PIXI.utils.isWebGLSupported()) {
-        try {
-            var w = document.createElement("div");
-            w.setAttribute("role", "alert");
-            w.innerText = "WebGL is not supported on your device: gameplay is disabled, but browsing still works.";
-            w.style.cssText = "margin:12px;padding:10px 14px;background:rgba(20,16,20,.92);color:#ffd9d9;border:1px solid #b63258;border-radius:10px;";
-            var s = document.getElementById("statuslines");
-            if (s) s.appendChild(w);
-            else document.body.appendChild(w);
-        } catch (e) {
-            alert("WebGL is not supported on your device!")
-        }
-        return;
-    }
+    // NOTE: no WebGL probe here; v8 removed PIXI.utils. launchgame awaits
+    // app.init({ preference: 'webgl' }) and shows a banner on failure.
     window.Osu = Osu;
     window.Playback = Playback;
     // setup compatible audio context

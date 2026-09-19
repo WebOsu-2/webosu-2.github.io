@@ -27,8 +27,8 @@ global.window = {
   dom.byId.set("pause-menu", H.makeElement("div"));
   global.document = dom.document;
 }
-global._ = require("../scripts/lib/underscore.js");
-global.PIXI = H.makePixiStub();
+global._ = H.ensureUnderscore();
+const PIXI = H.loadModule("scripts/lib/pixi.mjs");
 // header parsing is covered elsewhere; empty tags => default offset
 global.mp3Parser = { readTags: () => [] };
 if (!global.__audioCtxStub) global.__audioCtxStub = H.makeAudioContextStub({ currentTime: 1000 });
@@ -42,13 +42,13 @@ global.FileReader = class {
 };
 global.URL.createObjectURL = () => "blob:stub";
 global.URL.revokeObjectURL = () => {};
-global.Skin = new Proxy({}, { get: () => ({}) });
+global.Skin = new Proxy({}, { get: () => new PIXI.Texture() });
 global.game = null; // set per test (playerActions reads bare `game` too)
 
 function snd() { return { volume: 1, play() {} }; }
 function makeGame(over) {
   const game = {
-    window: global.window, stage: new global.PIXI.Container(), scene: null,
+    window: global.window, stage: new PIXI.Container(), scene: null,
     updatePlayerActions() {},
     backgroundDimRate: 0.6, backgroundBlurRate: 0, cursorSize: 1, showhwmouse: false,
     snakein: true, snakeout: true, autofullscreen: false,
@@ -97,8 +97,9 @@ function stubZip(extra) {
 const Osu = H.loadModule("scripts/osu.js").default;
 const Playback = H.loadModule("scripts/playback.js").default;
 
-async function bootTrack(versionMatch) {
-  const game = makeGame();
+async function bootTrack(versionMatch, over) {
+  const game = makeGame(over);
+  game.stage = new PIXI.Container();
   const osu = new Osu(stubZip());
   await new Promise((resolve, reject) => {
     osu.ondecoded = () => resolve();
@@ -146,11 +147,15 @@ test("headless: real map boots, clock finite, objects stream", async () => {
 
 test("headless: enabled video becomes a texture sprite, canvas untouched", async () => {
   global.window.app = { view: { style: {} }, renderer: { background: { color: 0x111111, alpha: 1 } } };
+  global.HTMLVideoElement = global.HTMLVideoElement || class HTMLVideoElement {};
   const createdVideos = [];
   const docCreate = document.createElement.bind(document);
   document.createElement = (tag) => {
     const el = docCreate(tag);
-    if (String(tag).toLowerCase() === "video") createdVideos.push(el);
+    if (String(tag).toLowerCase() === "video") {
+      Object.setPrototypeOf(el, global.HTMLVideoElement.prototype);
+      createdVideos.push(el);
+    }
     return el;
   };
   try {
@@ -170,6 +175,17 @@ test("headless: enabled video becomes a texture sprite, canvas untouched", async
     osu.filterTracks();
     const track = osu.tracks.find((t) => (t.metadata.Version || "").includes("Normal")) || osu.tracks[0];
     track.video = { filename: "bg.mp4", offset: 0 };
+    const createdVideos = [];
+    const docCreate = document.createElement.bind(document);
+  document.createElement = (tag) => {
+    const el = docCreate(tag);
+    if (String(tag).toLowerCase() === "video") {
+      Object.setPrototypeOf(el, global.HTMLVideoElement.prototype);
+      createdVideos.push(el);
+    }
+    return el;
+  };
+  global.HTMLVideoElement = global.HTMLVideoElement || class HTMLVideoElement {};
     const pb = new Playback(game, osu, track);
     H.eq(createdVideos.length, 1, "one video element created (detached, not DOM)");
     const area = document.getElementById("game-area");

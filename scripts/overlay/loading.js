@@ -1,4 +1,5 @@
-// Loading overlay (ES module). PIXI/Skin are globals.
+// Loading overlay (ES module). Skin is a global.
+import * as PIXI from '../lib/pixi.mjs';
 export default class LoadingMenu extends PIXI.Container {
         constructor(windowfield, track) {
             super();
@@ -14,40 +15,25 @@ export default class LoadingMenu extends PIXI.Container {
             this.bg.alpha = 0.8;
             this.addChild(this.bg);
 
-            this.titletext = new PIXI.BitmapText(track.metadata.Title || '-', {
-
-                fontName: 'Venera',
-
-                fontSize: 24
-
+            this.titletext = new PIXI.BitmapText({
+                text: track.metadata.Title || '-',
+                style: { fontFamily: 'Venera', fontSize: 24 }
             });
-            this.artisttext = new PIXI.BitmapText(track.metadata.Artist || '-', {
-
-                fontName: 'Venera',
-
-                fontSize: 14
-
+            this.artisttext = new PIXI.BitmapText({
+                text: track.metadata.Artist || '-',
+                style: { fontFamily: 'Venera', fontSize: 14 }
             });
-            this.versiontext = new PIXI.BitmapText(track.metadata.Version || '-', {
-
-                fontName: 'Venera',
-
-                fontSize: 14
-
+            this.versiontext = new PIXI.BitmapText({
+                text: track.metadata.Version || '-',
+                style: { fontFamily: 'Venera', fontSize: 14 }
             });
-            this.sourcetext = new PIXI.BitmapText(`Source: ${track.metadata.Source || '-'}`, {
-
-                fontName: 'Venera',
-
-                fontSize: 14
-
+            this.sourcetext = new PIXI.BitmapText({
+                text: `Source: ${track.metadata.Source || '-'}`,
+                style: { fontFamily: 'Venera', fontSize: 14 }
             });
-            this.mappertext = new PIXI.BitmapText(`Mapper: ${track.metadata.Creator || '-'}`, {
-
-                fontName: 'Venera',
-
-                fontSize: 14
-
+            this.mappertext = new PIXI.BitmapText({
+                text: `Mapper: ${track.metadata.Creator || '-'}`,
+                style: { fontFamily: 'Venera', fontSize: 14 }
             });
 
             // Configure text anchors

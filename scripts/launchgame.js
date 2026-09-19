@@ -1,4 +1,7 @@
-function launchOSU(osu, beatmapid, version) {
+async function launchOSU(osu, beatmapid, version) {
+  // NOTE: PIXI comes from window.PIXI, bridged by the initgame entry
+  // module (v8 ships no global build). Difficulty launch is gated on
+  // window.scriptReady, so the bridge always exists by the time we run.
   // select track
   let trackid = -1;
   // mode can be 0 or undefined
@@ -34,17 +37,28 @@ function launchOSU(osu, beatmapid, version) {
     }
   } catch (e) { /* ignore */ }
   console.log("launching PIXI app");
-  // launch PIXI app
+  // launch PIXI app (v8: options move to async init; force WebGL since
+  // custom shaders target it)
   let viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-  let app = (window.app = new PIXI.Application({
-    width: window.innerWidth,
-    height: viewportHeight,
-    resolution: window.devicePixelRatio || 1,
-    autoDensity: true,
-  }));
-  // (Pixi v7: canvas auto-resizes via resize() + autoDensity; the old v6
-  // autoResize flag is a no-op and only confuses readers.)
-  app.renderer.background.color = 0x111111;
+  let app = (window.app = new PIXI.Application());
+  try {
+    await app.init({
+      width: window.innerWidth,
+      height: viewportHeight,
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true,
+      backgroundColor: 0x111111,
+      preference: 'webgl',
+    });
+  } catch (e) {
+    console.error("WebGL init failed:", e);
+    window.app = null;
+    try {
+      if (typeof showErrorToast === "function") showErrorToast("Could not start WebGL: gameplay is disabled on this device/browser.");
+      else alert("Could not start WebGL on this device.");
+    } catch (err) { /* ignore */ }
+    return;
+  }
 
   // Add a resize listener to update the canvas dimensions dynamically
   if (window.visualViewport) {

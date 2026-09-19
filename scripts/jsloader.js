@@ -21,13 +21,14 @@ window.beatmaplistLoadedCallback = function () {
 			window.zip.workerScriptsPath = 'scripts/lib/';
 			loadScript("scripts/lib/zip-fs.js", checkdep);
 		});
-		loadScript("scripts/lib/pixi.min.js", checkdep);
+		// NOTE: pixi is an ES module (scripts/lib/pixi.mjs) imported by
+		// the game modules themselves, not a classic script anymore.
 		loadScript("scripts/lib/mp3parse.min.js", checkdep);
 		loadScript("scripts/lib/localforage.min.js", checkdep);
 		function checkdep() {
 			if (!window.aaaaa) window.aaaaa = 0;
 			window.aaaaa += 1;
-			if (window.aaaaa == 4) {
+			if (window.aaaaa == 3) {
 				// underscore + sound must EXECUTE before the entry module
 				// evaluates (it touches both synchronously), so chain them
 				// instead of racing parallel inserts.

@@ -6,7 +6,8 @@
 *
 */
 
-// Progress overlay (ES module). PIXI is a global.
+// Progress overlay (ES module).
+import * as PIXI from '../lib/pixi.mjs';
     class ProgressOverlay extends PIXI.Container {
         constructor(windowfield, starttime, endtime) {
             super();
@@ -14,10 +15,12 @@
             this.endtime = endtime;
 
             // remaining time, in lower right corner
-            this.remaining = new PIXI.BitmapText("", { fontName: 'Venera', fontSize: 16, tint: 0xddffff });
+            this.remaining = new PIXI.BitmapText({ text: "", style: { fontFamily: 'Venera', fontSize: 16 } });
+            this.remaining.tint = 0xddffff;
             this.remaining.anchor.set(1);
             this.addChild(this.remaining);
-            this.past = new PIXI.BitmapText("", { fontName: 'Venera', fontSize: 16, tint: 0xddffff });
+            this.past = new PIXI.BitmapText({ text: "", style: { fontFamily: 'Venera', fontSize: 16 } });
+            this.past.tint = 0xddffff;
             this.past.anchor.set(0, 1);
             this.addChild(this.past);
 

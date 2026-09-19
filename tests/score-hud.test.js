@@ -5,9 +5,9 @@
 const H = require("./helpers");
 
 global.window = {};
-global.PIXI = H.makePixiStub();
-// every score-*.png lookup resolves to a 20px-wide texture
-global.Skin = new Proxy({}, { get: (t, k) => ({ width: 20 }) });
+const PIXI = H.loadModule("scripts/lib/pixi.mjs");
+// every score-*.png lookup resolves to a real (empty) texture
+global.Skin = new Proxy({}, { get: () => new PIXI.Texture() });
 const ScoreOverlay = H.loadModule("scripts/overlay/score.js").default;
 
 function makeOverlay() {

@@ -6,7 +6,8 @@
 *
 */
 
-// Break overlay (ES module). PIXI is a global.
+// Break overlay (ES module).
+import * as PIXI from '../lib/pixi.mjs';
     class BreakOverlay extends PIXI.Container {
         constructor(windowfield) {
             super();
@@ -28,9 +29,9 @@
             this.barright.anchor.set(0.1, 0.5);
             this.barright.y = 0;
 
-            this.barmid.blendMode = PIXI.BLEND_MODES.ADD;
-            this.barleft.blendMode = PIXI.BLEND_MODES.ADD;
-            this.barright.blendMode = PIXI.BLEND_MODES.ADD;
+            this.barmid.blendMode = 'add';
+            this.barleft.blendMode = 'add';
+            this.barright.blendMode = 'add';
             this.barmid.scale.set(0.3);
             this.barleft.scale.set(0.3);
             this.barright.scale.set(0.3);
@@ -39,7 +40,7 @@
             this.addChild(this.barleft);
             this.addChild(this.barright);
 
-            this.number = new PIXI.BitmapText("", { fontName: 'Venera', fontSize: 40 });
+            this.number = new PIXI.BitmapText({ text: "", style: { fontFamily: 'Venera', fontSize: 40 } });
             this.number.anchor.set(0.5);
             this.number.x = 0;
             this.number.y = -40;

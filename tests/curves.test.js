@@ -2,7 +2,7 @@
 "use strict";
 const H = require("./helpers");
 
-global._ = require("../scripts/lib/underscore.js");
+global._ = H.ensureUnderscore();
 const Curve = H.loadModule("scripts/curves/Curve.js").default;
 const CurveType = H.loadModule("scripts/curves/CurveType.js").default;
 const Bezier2 = H.loadModule("scripts/curves/Bezier2.js").default;

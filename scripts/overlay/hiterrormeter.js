@@ -7,7 +7,8 @@
 *   r300, r100, r50: hit judgement window radius (in milliseconds)
 */
 
-// Hit-error meter overlay (ES module). PIXI is a global.
+// Hit-error meter overlay (ES module).
+import * as PIXI from '../lib/pixi.mjs';
     class ErrorMeter extends PIXI.Container {
         constructor(r300, r100, r50) {
             super();

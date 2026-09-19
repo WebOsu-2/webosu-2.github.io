@@ -6,6 +6,7 @@
 * classic scripts loaded before the game entry module.
 */
 import Osu from './osu.js';
+import * as PIXI from './lib/pixi.mjs';
 import setPlayerActions from './playerActions.js';
 import SliderMesh from './SliderMesh.js';
 import ScoreOverlay from './overlay/score.js';
@@ -405,7 +406,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             }
 
             this.createJudgement = function (x, y, depth, finalTime) {
-                let judge = new PIXI.BitmapText('', { fontName: 'Venera', fontSize: 20, });
+                let judge = new PIXI.BitmapText({ text: '', style: { fontFamily: 'Venera', fontSize: 20 } });
                 judge.anchor.set(0.5);
                 judge.scale.set(0.85 * this.hitSpriteScale, 1 * this.hitSpriteScale);
                 judge.visible = false;
@@ -462,32 +463,23 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             }
 
             this.createBackground = function () {
-                
-                // Load background if possible
+
+                // Load background if possible (v8: one async path; the
+                // promise resolves once the texture is ready to build)
                 function loadBackground(uri) {
-                    // if the URI starts with blob:, use Texture.from
-                    if (uri.startsWith("blob:")) {
-                        let texture = PIXI.Texture.from(uri);
-                        if (!texture.baseTexture.valid) {
-                            texture.baseTexture.once("loaded", () => buildBackground(texture));
-                        } else {
-                            buildBackground(texture);
-                        }
-                    }
-                    // Else use the Assets API
-                    else {
-                        PIXI.Assets.load(uri)
-                            .then(texture => buildBackground(texture))
-                            .catch(err => {
-                                console.error("Error loading background:", err);
+                    PIXI.Assets.load(uri)
+                        .then(texture => buildBackground(texture))
+                        .catch(err => {
+                            console.error("Error loading background:", err);
+                            if (uri !== "skin/defaultbg.jpg") {
                                 loadBackground("skin/defaultbg.jpg"); // fallback
-                            });
-                    }
+                            }
+                        });
                 }
 
                 function buildBackground(texture) {
-                    console.log("Texture:", texture.width, texture.height, texture.baseTexture.valid);
-                    if (!texture || !texture.baseTexture.valid) {
+                    console.log("Texture:", texture.width, texture.height);
+                    if (!texture || !(texture.width > 0) || !(texture.height > 0)) {
                         console.error("Error: Loaded texture is invalid", texture);
                         return;
                     }
@@ -495,9 +487,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                     let sprite = new PIXI.Sprite(texture);
                     // Optionally apply blur if enabled
                     if (self.game.backgroundBlurRate > 0.0001) {
-                        let blurFilter = new PIXI.filters.BlurFilter();
-                        blurFilter.blur = self.game.backgroundBlurRate;
-                        sprite.filters = [blurFilter];
+                        sprite.filters = [new PIXI.BlurFilter({ strength: self.game.backgroundBlurRate * 100 })];
                     }
                     // Use the sprite directly as the background, unless a
                     // video layer already took over (it may have become
@@ -746,7 +736,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 hit.circle = newHitSprite("hitcircleoverlay.png", basedep, 0.5);
                 hit.glow = newHitSprite("ring-glow.png", basedep + 2, 0.46);
                 hit.glow.tint = combos[hit.combo % combos.length];
-                hit.glow.blendMode = PIXI.BLEND_MODES.ADD;
+                hit.glow.blendMode = 'add';
                 hit.burst = newHitSprite("hitburst.png", 8.00005 + 0.0001 * hit.hitIndex);
                 hit.burst.visible = false;
 
@@ -831,7 +821,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 // Add follow circle (above slider body)
                 hit.follow = newSprite("sliderfollowcircle.png", hit.x, hit.y);
                 hit.follow.visible = false;
-                hit.follow.blendMode = PIXI.BLEND_MODES.ADD;
+                hit.follow.blendMode = 'add';
                 hit.followSize = 1; // [1,2] current follow circle size relative to hitcircle
 
                 // Add slider ball (above follow circle)
@@ -917,7 +907,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                     p.scale.set(this.hitSpriteScale * 0.3);
                     p.x = x1 + container.dx * d / distance;
                     p.y = y1 + container.dy * d / distance;
-                    p.blendMode = PIXI.BLEND_MODES.ADD;
+                    p.blendMode = 'add';
                     p.rotation = rotation;
                     p.anchor.set(0.5);
                     p.alpha = 0;
@@ -1429,6 +1419,11 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 // display hit score
                 for (let i = 0; i < hit.judgements.length; ++i)
                     this.updateJudgement(hit.judgements[i], time);
+                // push body/cap uniforms for this frame (v8: meshes render
+                // through the pipe; no manual GL here)
+                if (hit.body && typeof hit.body.sync === "function") {
+                    try { hit.body.sync(); } catch (e) { console.error("slider sync failed", e); }
+                }
             }
 
             this.updateSpinner = function (hit, time) {
@@ -1611,7 +1606,9 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 self.breakOverlay.destroy(opt);
                 self.progressOverlay.destroy(opt);
                 self.gamefield.destroy(opt);
-                self.background.destroy();
+                try {
+                    if (self.background) self.background.destroy();
+                } catch (e) { /* background may never have loaded */ }
                 self.destroyVideoBG();
                 // remove skip-intro button
                 try {
