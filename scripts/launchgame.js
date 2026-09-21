@@ -96,8 +96,35 @@ async function launchOSU(osu, beatmapid, version) {
     game.cursor = new PIXI.Sprite(Skin["cursor.png"]);
     game.cursor.anchor.x = game.cursor.anchor.y = 0.5;
     game.cursor.scale.x = game.cursor.scale.y = 0.3 * game.cursorSize;
+    game.cursor._baseScale = 0.3 * game.cursorSize;
     game.stage.addChild(game.cursor);
   }
+
+  // Cursor trail (desktop osu! fades small dots behind the cursor):
+  // pooled sprites fed from a procedural soft-dot texture, driven off
+  // game.mouseX/Y so it works with sprite, hardware and autoplay cursors.
+  game.trail = [];
+  game.trailCursor = 0;
+  game.trailLastX = -1e9;
+  game.trailLastY = -1e9;
+  game.trailLastT = 0;
+  game.cursorPulse = 0;
+  try {
+    if (typeof window.makeTrailData === "function") {
+      const td = window.makeTrailData();
+      game.trailTex = new PIXI.Texture({
+        source: new PIXI.BufferImageSource({ resource: td.data, width: td.width, height: td.height, alphaMode: 'premultiplied-alpha' }),
+      });
+      for (let i = 0; i < 24; ++i) {
+        const p = new PIXI.Sprite(game.trailTex);
+        p.anchor.set(0.5);
+        p.visible = false;
+        p.age = 1e9;
+        game.stage.addChild(p);
+        game.trail.push(p);
+      }
+    }
+  } catch (e) { game.trail = []; }
 
   // switch page to game view
   if (game.autofullscreen) document.documentElement.requestFullscreen();
@@ -198,6 +225,8 @@ async function launchOSU(osu, beatmapid, version) {
       game.cursor.destroy();
       game.cursor = null;
     }
+    game.trail = [];
+    game.trailTex = null;
     window.app.destroy(true, { children: true, texture: false });
     window.app = null;
     gameLoop = null;
@@ -234,7 +263,47 @@ async function launchOSU(osu, beatmapid, version) {
       // Handle cursor
       game.cursor.x = (game.mouseX / 512) * gfx.width + gfx.xoffset;
       game.cursor.y = (game.mouseY / 384) * gfx.height + gfx.yoffset;
+      // Click pulse (desktop cursor pops on press, eases back on release)
+      const dtPulse = Math.min(100, Math.max(0, timestamp - (game.cursorLastT || timestamp)));
+      game.cursorLastT = timestamp;
+      game.cursorPulse = game.down ? 1 : Math.max(0, (game.cursorPulse || 0) - dtPulse / 180);
+      const cs = (game.cursor._baseScale || 0.3 * game.cursorSize) * (1 + 0.3 * game.cursorPulse);
+      game.cursor.scale.x = game.cursor.scale.y = cs;
       game.cursor.bringToFront();
+    }
+    if (game.trail && game.trail.length && game.trailTex) {
+      // Trail follows the mapped mouse even with a hardware cursor
+      const tx = (game.mouseX / 512) * gfx.width + gfx.xoffset;
+      const ty = (game.mouseY / 384) * gfx.height + gfx.yoffset;
+      const dtTrail = Math.min(100, Math.max(0, timestamp - (game.trailLastT || timestamp)));
+      game.trailLastT = timestamp;
+      // First frame: snap (no one has moved the mouse yet; spawning
+      // here would stamp a dot at the default corner position).
+      if (game.trailLastX < -1e8) {
+        game.trailLastX = tx;
+        game.trailLastY = ty;
+      }
+      const moved = Math.hypot(tx - game.trailLastX, ty - game.trailLastY);
+      if (moved > 3 && dtTrail > 0) {
+        const p = game.trail[game.trailCursor % game.trail.length];
+        game.trailCursor++;
+        p.x = tx;
+        p.y = ty;
+        p.age = 0;
+        p.peak = game.down ? 0.5 : 0.3;
+        p.visible = true;
+        game.trailLastX = tx;
+        game.trailLastY = ty;
+      }
+      const base = 0.5 * game.cursorSize;
+      for (const p of game.trail) {
+        if (!p.visible) continue;
+        p.age += dtTrail;
+        const u = p.age / 240;
+        if (u >= 1) { p.visible = false; continue; }
+        p.alpha = (p.peak || 0.3) * (1 - u);
+        p.scale.x = p.scale.y = base * (1 - 0.5 * u);
+      }
     }
     app.renderer.render(game.stage);
     window.animationRequestID = window.requestAnimationFrame(gameLoop);

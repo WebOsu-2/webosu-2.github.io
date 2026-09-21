@@ -5,6 +5,10 @@ import Osu from './osu.js';
 import Playback from './playback.js';
 import * as PIXI from './lib/pixi.mjs';
 import { makeSliderBallData } from './sliderBall.js';
+import { makeTrailData } from './sliderBall.js';
+// Procedural cursor-trail dots for the game view (classic launchgame.js
+// reads them off window: it cannot import this ESM module).
+window.makeTrailData = makeTrailData;
 // Bridge for the remaining classic scripts (launchgame.js): v8 ships no
 // global build, so expose the module namespace where they expect it.
 // (Difficulty launch is gated on window.scriptReady below, so this is

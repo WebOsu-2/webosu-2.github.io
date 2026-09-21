@@ -14,6 +14,7 @@
 */
 
 import * as PIXI from './lib/pixi.mjs';
+import { makeSliderBallRamp } from './sliderBall.js';
 
 // GLSL ES 3.00 (v8 compiles custom programs as such; no #version needed,
 // mirroring v8's own raw-shader examples).
@@ -782,9 +783,12 @@ export default class SliderMesh extends PIXI.Container {
     ensureMeshes() {
         if (this.bodyMesh) return;
         const P = SliderMesh.prototype;
-        if (!P.glProgram || !P.sliderTexture || !P.circleGeom) return;
+        if (!P.glProgram || !P.sliderTexture || !P.ballTexture || !P.circleGeom) return;
         this.bodyShader = makeShader(P.sliderTexture.source);
-        this.capShader = makeShader(P.sliderTexture.source);
+        // The head/tail cap is the opaque ball, not the translucent
+        // track gradient: the growing snake tip then reads as a solid
+        // ball head hiding the clip edge, like desktop osu!.
+        this.capShader = makeShader(P.ballTexture.source);
         this.bodyMesh = new PIXI.Mesh({ geometry: this.bodyGeom, shader: this.bodyShader });
         this.capMesh = new PIXI.Mesh({ geometry: P.circleGeom, shader: this.capShader });
         this.capMesh.visible = false;
@@ -810,6 +814,15 @@ export default class SliderMesh extends PIXI.Container {
             const cp = circlePoints(radius);
             P.circleGeom = makeGeometry(cp.verts, cp.index);
         }
+        if (!P.ballTexture) {
+            // Opaque ball ramp for the cap mesh (single row; the cap
+            // shader samples it at texturepos 0.5). Built once: unlike
+            // the track gradient it does not depend on combo colors.
+            const ramp = makeSliderBallRamp();
+            P.ballTexture = new PIXI.Texture({
+                source: new PIXI.BufferImageSource({ resource: ramp.data, width: ramp.width, height: ramp.height, alphaMode: 'premultiplied-alpha' }),
+            });
+        }
         P.baseTransform = transform;
     }
 
@@ -834,7 +847,7 @@ export default class SliderMesh extends PIXI.Container {
         bu.oy = oy0;
         const cu = this.capShader.resources.sliderUniforms.uniforms;
         cu.alpha = this.alpha;
-        cu.texturepos = this.tintid / this.ncolors;
+        cu.texturepos = 0.5; // ball ramp is a single row: sample its middle
         cu.dx = T.dx;
         cu.dy = T.dy;
         cu.dt = 0;
