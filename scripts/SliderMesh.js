@@ -1,13 +1,15 @@
 /*
  * custom class, extends PIXI.Container
  * Renders an osu! slider as two v8 Mesh children sharing one GlProgram:
- * the static body, plus a small rounded tip cap that rides the snake head
- * while growing/receding, so the moving end looks naturally round instead
- * of flat-clipped. Per-frame work is uniform updates plus re-posing one
- * ~18-vertex fan: no manual GL, no depth prepass. Fragments self-clip for snaking in clip space
-* (z beyond the far plane), and coplanar triangles sharing vertices are
-* covered exactly once by rasterization rules, so no depth buffer games
-* are needed for clean joints.
+ * the static unioned body (complete sliders), plus a snake mesh rebuilt
+ * per frame from the partial path while growing/receding — the moving
+ * head is a true round cap of the same mesh, seamless by construction
+ * (lazer SliderBody architecture). Per-frame work is uniform updates
+ * plus one partial-path rebuild while snaking: no manual GL, no depth
+ * prepass. Coplanar triangles sharing vertices are covered exactly once
+ * by rasterization rules, so no depth buffer games are needed for clean
+ * joints. The vertex shader retains a clip stage (unused: both meshes
+ * always draw whole).
 *
 * constructor params
 *   curve: { curve: [{x,y,t}], pointAt(t) }, in osu pixels
@@ -77,48 +79,45 @@ function makeGeometry(verts, index) {
     return g;
 }
 
-// Moving rounded tip: a half-disk fan (center + arc) drawn over the snake
-// clip edge while growing/receding. The diameter sits exactly on the
-// body's flat clip line and the semicircle bulges outward, so the moving
-// end reads as a naturally round growing head. Same texture mapping as
-// the body (center dist 0, rim dist 1), all verts tagged with the tip's
-// curve parameter so snake clipping keeps the whole fan.
-const TIP_DIVS = 16;
-function makeTipGeometry() {
-    const verts = new Array((TIP_DIVS + 2) * 4).fill(0);
-    const index = [];
-    for (let i = 0; i < TIP_DIVS; ++i) index.push(0, 1 + i, 2 + i);
-    return makeGeometry(verts, index);
-}
-
-// Fill the tip fan: center at the snake head, rim = forward semicircle of
-// radius r around it. forwardSign +1 grows along +t, -1 recedes from the head.
-// The fan tucks OVERLAP px back under the body's clip edge: abutting it
-// exactly leaves a hairline gap (the body's edge verts are trim/union
-// adjusted, never exactly on the tip chord), while a 1px overlap only
-// double-draws identical texture (invisible) instead of leaking background.
-const TIP_OVERLAP_PX = 1.0;
-function poseTip(geom, curve, tipT, r, forwardSign) {
-    const C = curve.pointAt(tipT);
-    const A = curve.pointAt(Math.max(0, tipT - 0.004));
-    const B = curve.pointAt(Math.min(1, tipT + 0.004));
-    let fx = (B.x - A.x) * forwardSign, fy = (B.y - A.y) * forwardSign;
-    const fl = Math.hypot(fx, fy);
-    if (fl < 1e-6) { fx = 1; fy = 0; } else { fx /= fl; fy /= fl; }
-    const nx = -fy, ny = fx;
-    const cx = C.x - fx * TIP_OVERLAP_PX, cy = C.y - fy * TIP_OVERLAP_PX;
-    const data = geom.getBuffer('position').data;
-    data[0] = cx; data[1] = cy; data[2] = tipT; data[3] = 0.0;
-    for (let i = 0; i <= TIP_DIVS; ++i) {
-        const a = -Math.PI / 2 + Math.PI * (i / TIP_DIVS);
-        const ox = Math.cos(a), oy = Math.sin(a);
-        const o = 4 * (1 + i);
-        data[o] = cx + r * (ox * fx + oy * nx);
-        data[o + 1] = cy + r * (ox * fy + oy * ny);
-        data[o + 2] = tipT;
-        data[o + 3] = 1.0;
-    }
-    geom.getBuffer('position').update();
+// osu!-style snaking: while growing/receding, the visible mesh is rebuilt
+// from the truncated point list (partial path) instead of clipping the
+// full body in the shader. curvePoints puts round caps on both ends of
+// whatever list it gets, so the moving head is a true round cap of the
+// same mesh — seamless by construction, like lazer's SliderBody. The
+// exact single-coverage union is skipped on rebuilds (it is the slow
+// stage, and overlaps are near-invisible under the opaque legacy fill);
+// the complete slider keeps the full unioned mesh.
+export function partialPoints(pts, fromT, toT) {
+    // pts sorted by .t (curve grid); keeps [fromT, toT] with exact
+    // interpolated boundary points so caps land precisely on the head.
+    const out = [];
+    const n = pts.length;
+    if (!n) return out;
+    const at = (t) => {
+        if (t <= pts[0].t) return { x: pts[0].x, y: pts[0].y, t };
+        const last = pts[n - 1];
+        if (t >= last.t) return { x: last.x, y: last.y, t };
+        let lo = 0, hi = n - 1;
+        while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (pts[mid].t <= t) lo = mid; else hi = mid;
+        }
+        const a = pts[lo], b = pts[hi];
+        const span = b.t - a.t;
+        const u = span > 1e-12 ? (t - a.t) / span : 0;
+        return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, t };
+    };
+    if (fromT > pts[0].t + 1e-12) out.push(at(fromT));
+    for (let i = 0; i < n; ++i)
+        if (pts[i].t >= fromT && pts[i].t <= toT) out.push(pts[i]);
+    if (toT < pts[n - 1].t - 1e-12) out.push(at(toT));
+    // An on-grid cut duplicates that grid point (kept + interpolated);
+    // drop exact consecutive duplicates (same-position folds with
+    // different t are kept: only all-equal triples merge).
+    return out.filter((p, i) => i === 0 ||
+        Math.abs(p.x - out[i - 1].x) > 1e-9 ||
+        Math.abs(p.y - out[i - 1].y) > 1e-9 ||
+        Math.abs(p.t - out[i - 1].t) > 1e-12);
 }
 
 export function newTextureData(colors, SliderTrackOverride, SliderBorder) {
@@ -203,7 +202,9 @@ const DIVIDES = 64;
 // Returns plain { verts, index } (no GL objects): butt quad strip with
 // degenerate-segment guards, round outer joins, and miter-welded inner
 // joins (collapsed to a fan around the kink miter across overlapped spans).
-function curvePoints(curve0, radius) {
+// skipUnion (snake rebuilds only): exact union is the slow stage and is
+// skipped per-frame; overlaps stay near-invisible under the opaque fill.
+function curvePoints(curve0, radius, skipUnion) {
     let curve = [];
     for (let i = 0; i < curve0.length; ++i)
         if (i === 0 || Math.abs(curve0[i].x - curve0[i - 1].x) > 0.00001 || Math.abs(curve0[i].y - curve0[i - 1].y) > 0.00001)
@@ -599,6 +600,7 @@ function curvePoints(curve0, radius) {
             index.push(...newIdx);
         }
     }
+    if (skipUnion) return { verts: vert, index: index };
     return unionSingleCoverage(vert, index);
 }
 
@@ -823,9 +825,19 @@ export default class SliderMesh extends PIXI.Container {
         this.bodyGeom = makeGeometry(pts.verts, pts.index);
         this.bodyMesh = null;
         this.bodyShader = null;
-        this.tipGeom = makeTipGeometry();
-        this.tipMesh = null;
-        this.tipShader = null;
+        // Snake mesh: fixed-capacity buffers (a partial path never exceeds
+        // these bounds), refilled per frame while snaking; unused index
+        // slots stay 0 (degenerate tris rasterize nothing).
+        const n = Math.max(2, curve.curve.length);
+        this.snakeVertCap = 128 * n + 512;
+        this.snakeIdxCap = 512 * n + 2048;
+        this.snakeGeom = makeGeometry(
+            new Float32Array(this.snakeVertCap * 4),
+            new Uint32Array(this.snakeIdxCap)
+        );
+        this.snakeMesh = null;
+        this.snakeShader = null;
+        this.lastSnake = null; // "startt,endt" key of current snake contents
         this.alpha = 1.0;
         this.tintid = tintid;
         this.startt = 0.0;
@@ -843,11 +855,10 @@ export default class SliderMesh extends PIXI.Container {
         this.bodyShader = makeShader(P.sliderTexture.source);
         this.bodyMesh = new PIXI.Mesh({ geometry: this.bodyGeom, shader: this.bodyShader });
         this.addChild(this.bodyMesh);
-        // Tip on top: its diameter covers the body's flat clip edge exactly.
-        this.tipShader = makeShader(P.sliderTexture.source);
-        this.tipMesh = new PIXI.Mesh({ geometry: this.tipGeom, shader: this.tipShader });
-        this.tipMesh.visible = false;
-        this.addChild(this.tipMesh);
+        this.snakeShader = makeShader(P.sliderTexture.source);
+        this.snakeMesh = new PIXI.Mesh({ geometry: this.snakeGeom, shader: this.snakeShader });
+        this.snakeMesh.visible = false;
+        this.addChild(this.snakeMesh);
     }
 
     initialize(colors, radius, transform, SliderTrackOverride, SliderBorder) {
@@ -872,8 +883,10 @@ export default class SliderMesh extends PIXI.Container {
     }
 
     // Push per-frame state (called every frame from updateSlider):
-    // body visibility, snake clipping uniforms, color slot, and the
-    // rounded tip cap riding the snake head while growing/receding.
+    // full sliders show the static unioned body; while snaking, the body
+    // hides and the snake mesh shows the rebuilt partial path instead.
+    // Both meshes always draw whole (dt=0, ot=1): the snake's shape comes
+    // from rebuilt geometry, never from shader clipping.
     sync() {
         this.ensureMeshes();
         const T = SliderMesh.prototype.baseTransform;
@@ -886,45 +899,62 @@ export default class SliderMesh extends PIXI.Container {
             u.ox = T.ox;
             u.oy = T.oy;
         };
-        pushShared(this.bodyShader.resources.sliderUniforms.uniforms);
-        pushShared(this.tipShader.resources.sliderUniforms.uniforms);
         const bu = this.bodyShader.resources.sliderUniforms.uniforms;
-        const tu = this.tipShader.resources.sliderUniforms.uniforms;
-        // The tip fan is never snake-clipped (all its verts carry the
-        // head's own t, which the clip keeps); it shows only while snaking.
-        tu.dt = 0;
-        tu.ot = 1;
+        const su = this.snakeShader.resources.sliderUniforms.uniforms;
+        pushShared(bu);
+        pushShared(su);
+        bu.dt = 0;
+        bu.ot = 1;
+        su.dt = 0;
+        su.ot = 1;
 
         if (this.startt === 0.0 && this.endt === 1.0) {
-            bu.dt = 0;
-            bu.ot = 1;
             this.bodyMesh.visible = true;
-            this.tipMesh.visible = false;
+            this.snakeMesh.visible = false;
+            this.lastSnake = null;
         } else if (this.endt === 1.0) {
             if (this.startt !== 1.0) {
-                bu.dt = -1;
-                bu.ot = -this.startt;
-                this.bodyMesh.visible = true;
-                poseTip(this.tipGeom, this.curve, this.startt, this.radius, -1);
-                this.tipMesh.visible = true;
+                this.rebuildSnake(this.startt, 1.0);
+                this.bodyMesh.visible = false;
+                this.snakeMesh.visible = true;
             } else {
                 this.bodyMesh.visible = false;
-                this.tipMesh.visible = false;
+                this.snakeMesh.visible = false;
+                this.lastSnake = null;
             }
         } else if (this.startt === 0.0) {
             if (this.endt !== 0.0) {
-                bu.dt = 1;
-                bu.ot = this.endt;
-                this.bodyMesh.visible = true;
-                poseTip(this.tipGeom, this.curve, this.endt, this.radius, +1);
-                this.tipMesh.visible = true;
+                this.rebuildSnake(0.0, this.endt);
+                this.bodyMesh.visible = false;
+                this.snakeMesh.visible = true;
             } else {
                 this.bodyMesh.visible = false;
-                this.tipMesh.visible = false;
+                this.snakeMesh.visible = false;
+                this.lastSnake = null;
             }
         } else {
             console.error("can't snake both end of slider");
         }
+    }
+
+    // Rebuild the snake mesh for [fromT, toT] unless it already shows it.
+    // No-op if the partial path would overflow the fixed buffers (cannot
+    // happen within the capacity bounds; keeps the previous frame).
+    rebuildSnake(fromT, toT) {
+        const key = fromT + "," + toT;
+        if (key === this.lastSnake) return;
+        const out = curvePoints(partialPoints(this.curve.curve, fromT, toT), this.radius, true);
+        const nv = out.verts.length / 4;
+        if (nv > this.snakeVertCap || out.index.length > this.snakeIdxCap) return;
+        const pos = this.snakeGeom.getBuffer('position').data;
+        for (let i = 0; i < out.verts.length; ++i) pos[i] = out.verts[i];
+        this.snakeGeom.getBuffer('position').update();
+        const idx = this.snakeGeom.indexBuffer.data;
+        let i = 0;
+        for (; i < out.index.length; ++i) idx[i] = out.index[i];
+        for (; i < idx.length; ++i) idx[i] = 0;
+        this.snakeGeom.indexBuffer.update();
+        this.lastSnake = key;
     }
 
     destroy(options) {
@@ -938,14 +968,15 @@ export default class SliderMesh extends PIXI.Container {
         this.bodyShader = null;
         this.bodyMesh = null;
         try {
-            if (this.tipGeom) this.tipGeom.destroy();
+            if (this.snakeGeom) this.snakeGeom.destroy();
         } catch (e) { /* ignore */ }
-        this.tipGeom = null;
+        this.snakeGeom = null;
         try {
-            if (this.tipShader) this.tipShader.destroy();
+            if (this.snakeShader) this.snakeShader.destroy();
         } catch (e) { /* ignore */ }
-        this.tipShader = null;
-        this.tipMesh = null;
+        this.snakeShader = null;
+        this.snakeMesh = null;
+        this.lastSnake = null;
         super.destroy(options);
     }
 }
