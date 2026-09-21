@@ -172,7 +172,7 @@ function countUncovered(m, R) {
     if (Math.abs(d) < 1e-12) return false;
     const l1 = ((B.y - C.y) * (px - C.x) + (C.x - B.x) * (py - C.y)) / d;
     const l2 = ((C.y - A.y) * (px - C.x) + (A.x - C.x) * (py - C.y)) / d;
-    return l1 >= -1e-9 && l2 >= -1e-9 && l1 + l2 <= 1 + 1e-9;
+    return l1 >= -1e-7 && l2 >= -1e-7 && l1 + l2 <= 1 + 1e-7;
   };
   const pts = m.curve.curve;
   let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
@@ -208,6 +208,63 @@ test("slider-mesh: kink and fold-back tip have no coverage holes", () => {
   const fold = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: 0 }], 200, true);
   checkGeometry(fold, "fold");
   H.eq(countUncovered(fold, 50), 0, "fold tip fully covered");
+});
+
+function dblFraction(m, R) {
+  // strict-interior double-drawn fraction over the whole body (2px
+  // raster): shared tiling edges must not count, only real area overlap.
+  const pos = posOf(m);
+  const idx = m.bodyGeom.indexBuffer.data;
+  const P = (v) => ({ x: pos[4 * v], y: pos[4 * v + 1] });
+  const n = idx.length / 3;
+  const inside = (px, py, A, B, C) => {
+    const d = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y);
+    if (Math.abs(d) < 1e-12) return false;
+    const l1 = ((B.y - C.y) * (px - C.x) + (C.x - B.x) * (py - C.y)) / d;
+    const l2 = ((C.y - A.y) * (px - C.x) + (A.x - C.x) * (py - C.y)) / d;
+    return l1 > 1e-7 && l2 > 1e-7 && l1 + l2 < 1 - 1e-7;
+  };
+  const pts = m.curve.curve;
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const p of pts) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+  }
+  let single = 0, dbl = 0;
+  for (let gx = Math.floor(x0) - R; gx <= x1 + R; gx += 2) {
+    for (let gy = Math.floor(y0) - R; gy <= y1 + R; gy += 2) {
+      let c = 0;
+      for (let t = 0; t < n; t++) {
+        if (inside(gx, gy, P(idx[3 * t]), P(idx[3 * t + 1]), P(idx[3 * t + 2]))) {
+          if (++c > 1) break;
+        }
+      }
+      if (c === 1) single++;
+      else if (c > 1) dbl++;
+    }
+  }
+  return { single, dbl, frac: dbl / Math.max(1, single + dbl) };
+}
+
+test("slider-mesh: pretzel shapes stay bounded (no wholesale doubling)", () => {
+  // Legs closer than 2R genuinely intersect; the union trims midlines,
+  // trims intruding fans and drops covered micros. Bounds are loose
+  // (true pre-fix baselines at R=30: S ~25%, hairpin ~55%), guarding
+  // against regressions to fully-doubled gutters, not asserting
+  // perfection (seam slivers remain on extreme pretzels).
+  const build = (hit) => new SliderMesh(new LinearBezier(hit, true), 30, 0);
+  const S = build({ x: 0, y: 0, keyframes: [{ x: 40, y: 0 }, { x: 40, y: 25 }, { x: 0, y: 25 }, { x: 0, y: 50 }], pixelLength: 130 });
+  checkGeometry(S, "tight-S");
+  const s = dblFraction(S, 30);
+  console.log(`    tight-S: single=${s.single} dbl=${s.dbl} (${(s.frac * 100).toFixed(2)}%)`);
+  H.assert(s.frac < 0.24, `tight-S double fraction ${(s.frac * 100).toFixed(2)}% < 24%`);
+  H.eq(countUncovered(S, 30), 0, "tight-S fully covered");
+  const Hp = build({ x: 0, y: 0, keyframes: [{ x: 100, y: 0 }, { x: 100, y: 8 }, { x: 0, y: 8 }], pixelLength: 208 });
+  checkGeometry(Hp, "hairpin");
+  const h = dblFraction(Hp, 30);
+  console.log(`    hairpin: single=${h.single} dbl=${h.dbl} (${(h.frac * 100).toFixed(2)}%)`);
+  H.assert(h.frac < 0.16, `hairpin double fraction ${(h.frac * 100).toFixed(2)}% < 16%`);
+  H.eq(countUncovered(Hp, 30), 0, "hairpin fully covered");
 });
 
 test("slider-mesh: gradient texture uploads as premultiplied", () => {

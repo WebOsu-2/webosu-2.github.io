@@ -4,6 +4,7 @@
 import Osu from './osu.js';
 import Playback from './playback.js';
 import * as PIXI from './lib/pixi.mjs';
+import { makeSliderBallData } from './sliderBall.js';
 // Bridge for the remaining classic scripts (launchgame.js): v8 ships no
 // global build, so expose the module namespace where they expect it.
 // (Difficulty launch is gated on window.scriptReady below, so this is
@@ -97,6 +98,20 @@ function main() {
         document.body.classList.add("skin-ready");
     
         window.Skin = resources['sprites.json'].textures;
+        // Swap the atlas slider ball for a procedural osu!-style one: the
+        // baked sprite is ~12% opaque black, so the clipped body edge
+        // shows through the thumb (slider looks cut off underneath it).
+        // Stable's ball is an opaque white core sized to the track; the
+        // generated buffer is premultiplied, hence the alphaMode below.
+        try {
+            const ball = makeSliderBallData();
+            window.Skin["sliderb.png"] = new PIXI.Texture({
+                source: new PIXI.BufferImageSource({
+                    resource: ball.data, width: ball.width, height: ball.height,
+                    alphaMode: 'premultiplied-alpha',
+                }),
+            });
+        } catch (e) { console.warn("slider ball texture:", e); }
     });
     
 
