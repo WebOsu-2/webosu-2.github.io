@@ -121,60 +121,79 @@ function poseTip(geom, curve, tipT, r, forwardSign) {
     geom.getBuffer('position').update();
 }
 
-function newTextureData(colors, SliderTrackOverride, SliderBorder) {
-    const borderwidth = 0.128;
-    const innerPortion = 1 - borderwidth;
-    const edgeOpacity = 0.8;
-    const centerOpacity = 0.3;
-    const blurrate = 0.015;
+export function newTextureData(colors, SliderTrackOverride, SliderBorder) {
+    // osu!-legacy track profile across the radius (u = 0 center -> 1 edge),
+    // mirroring lazer LegacySliderBody's anatomy: a soft black core
+    // shadow, a combo gradient running lighter-inside to darker-outside,
+    // and a crisp white border ring at the edge — near opaque throughout
+    // (NOT the old translucent dark-centered wash). Everything is mixed
+    // in premultiplied space and stored premultiplied (v8 uploads
+    // 'premultiplied-alpha' sources as-is).
+    const B0 = 0.12; // core shadow over [0, B0], deepening outward
+    const CORE_MAX_A = 0.25;
+    const B1 = 0.74; // body gradient over [B0, B1], light -> dark outward
+    const B2 = 0.88; // white border blends in over [B1, B2], solid to edge
+    const BODY_A = 0.85; // near-opaque body (legacy track alpha)
+    const BLEND = 0.02; // Mach-band-free step out of the core shadow
+    const AA = 0.03; // outer edge feather to transparent
     const width = 200;
     let buff = new Uint8Array(colors.length * width * 4);
 
+    const smooth = (x) => {
+        const t = x < 0 ? 0 : (x > 1 ? 1 : x);
+        return t * t * (3 - 2 * t);
+    };
     for (let k = 0; k < colors.length; ++k) {
         let tint = (typeof (SliderTrackOverride) != 'undefined') ? SliderTrackOverride : colors[k];
         let bordertint = (typeof (SliderBorder) != 'undefined') ? SliderBorder : 0xffffff;
-        let borderR = (bordertint >> 16) / 255;
-        let borderG = ((bordertint >> 8) & 255) / 255;
-        let borderB = (bordertint & 255) / 255;
-        let borderA = 1.0;
-        let innerR = (tint >> 16) / 255;
-        let innerG = ((tint >> 8) & 255) / 255;
-        let innerB = (tint & 255) / 255;
-        let innerA = 1.0;
+        const ar = ((tint >> 16) & 255) / 255;
+        const ag = ((tint >> 8) & 255) / 255;
+        const ab = (tint & 255) / 255;
+        // gradient ends: lightened accent inside, darkened accent outside
+        const inR = Math.min(1, ar + (1 - ar) * 0.55);
+        const inG = Math.min(1, ag + (1 - ag) * 0.55);
+        const inB = Math.min(1, ab + (1 - ab) * 0.55);
+        const outR = ar * 0.8, outG = ag * 0.8, outB = ab * 0.8;
+        const bR = ((bordertint >> 16) & 255) / 255;
+        const bG = ((bordertint >> 8) & 255) / 255;
+        const bB = (bordertint & 255) / 255;
         for (let i = 0; i < width; i++) {
-            let position = i / width;
-            let R, G, B, A;
-            if (position >= innerPortion) {
-                R = borderR;
-                G = borderG;
-                B = borderB;
-                A = borderA;
+            const u = i / width;
+            // body gradient color at u (non-premultipliedRGB + BODY_A)
+            const gt = smooth((u - B0) / (B1 - B0));
+            const gR = inR + (outR - inR) * gt;
+            const gG = inG + (outG - inG) * gt;
+            const gB = inB + (outB - inB) * gt;
+            let pr, pg, pb, pa; // premultiplied output
+            if (u < B0) {
+                // core shadow (0,0,0, deepening alpha) blending into body
+                const m = smooth((u - (B0 - BLEND)) / BLEND);
+                const sa = CORE_MAX_A * smooth(u / B0);
+                pr = 0 + (gR * BODY_A - 0) * m;
+                pg = 0 + (gG * BODY_A - 0) * m;
+                pb = 0 + (gB * BODY_A - 0) * m;
+                pa = sa + (BODY_A - sa) * m;
+            } else if (u < B1) {
+                pr = gR * BODY_A; pg = gG * BODY_A; pb = gB * BODY_A; pa = BODY_A;
+            } else if (u < B2) {
+                // white border blends in over [B1, B2]
+                const m = smooth((u - B1) / (B2 - B1));
+                pr = gR * BODY_A + (bR - gR * BODY_A) * m;
+                pg = gG * BODY_A + (bG - gG * BODY_A) * m;
+                pb = gB * BODY_A + (bB - gB * BODY_A) * m;
+                pa = BODY_A + (1 - BODY_A) * m;
             } else {
-                R = innerR;
-                G = innerG;
-                B = innerB;
-                A = innerA * ((edgeOpacity - centerOpacity) * position / innerPortion + centerOpacity);
+                pr = bR; pg = bG; pb = bB; pa = 1.0;
             }
-            R *= A;
-            G *= A;
-            B *= A;
-            if (1 - position < blurrate) {
-                R *= (1 - position) / blurrate;
-                G *= (1 - position) / blurrate;
-                B *= (1 - position) / blurrate;
-                A *= (1 - position) / blurrate;
+            // outer edge feather to transparent
+            if (1 - u < AA) {
+                const f = (1 - u) / AA;
+                pr *= f; pg *= f; pb *= f; pa *= f;
             }
-            if (innerPortion - position > 0 && innerPortion - position < blurrate) {
-                let mu = (innerPortion - position) / blurrate;
-                R = mu * R + (1 - mu) * borderR * borderA;
-                G = mu * G + (1 - mu) * borderG * borderA;
-                B = mu * B + (1 - mu) * borderB * borderA;
-                A = mu * innerA + (1 - mu) * borderA;
-            }
-            buff[(k * width + i) * 4] = R * 255;
-            buff[(k * width + i) * 4 + 1] = G * 255;
-            buff[(k * width + i) * 4 + 2] = B * 255;
-            buff[(k * width + i) * 4 + 3] = A * 255;
+            buff[(k * width + i) * 4] = Math.round(pr * 255);
+            buff[(k * width + i) * 4 + 1] = Math.round(pg * 255);
+            buff[(k * width + i) * 4 + 2] = Math.round(pb * 255);
+            buff[(k * width + i) * 4 + 3] = Math.round(pa * 255);
         }
     }
     return { data: buff, width: width, height: colors.length };
