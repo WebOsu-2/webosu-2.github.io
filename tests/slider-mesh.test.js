@@ -93,29 +93,27 @@ test("slider-mesh: joint/end-cap fans carry joint t for snake clipping", () => {
 test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   initMesh(m);
   m.sync(); // meshes build lazily once shared state exists
-  H.assert(m.bodyMesh && m.capMesh, "both meshes built");
-  H.eq(m.capMesh.visible, false, "cap hidden on full slider");
+  H.assert(m.bodyMesh, "body mesh built");
+  H.eq(m.capMesh, undefined, "no cap mesh (soft tip)");
   const bu = () => m.bodyShader.resources.sliderUniforms.uniforms;
-  const cu = () => m.capShader.resources.sliderUniforms.uniforms;
-  // the cap defaults to the opaque track head, not the translucent
-  // track gradient: separate sampler, combo row like the body
-  H.assert(
-    m.capShader.resources.uSampler2 !== m.bodyShader.resources.uSampler2,
-    "cap has its own sampler"
-  );
   m.startt = 0.5; m.endt = 1.0; m.alpha = 0.8;
   m.sync();
   H.eq(bu().dt, -1, "snake-in clip flag");
   H.eq(bu().ot, -0.5, "snake-in threshold");
   H.eq(bu().alpha, 0.8, "alpha pushed");
   H.eq(bu().texturepos, 0, "body uses combo row 0");
-  H.eq(cu().texturepos, 0, "track head uses combo row 0");
-  H.eq(cu().alpha, 0.8, "cap follows body alpha");
-  H.eq(m.capMesh.visible, true, "cap shown while snaking");
+  H.eq(bu().fadelen, 0.04, "tip fade on while snaking");
+  H.eq(m.bodyMesh.visible, true, "body shown while snaking");
   m.startt = 0.0; m.endt = 1.0;
   m.sync();
   H.eq(bu().dt, 0, "full slider");
-  H.eq(m.capMesh.visible, false, "cap hidden when full");
+  H.eq(bu().fadelen, 0, "tip fade off when full");
+  H.eq(m.bodyMesh.visible, true, "body shown when full");
+  m.startt = 0.0; m.endt = 0.5; m.alpha = 0.8;
+  m.sync();
+  H.eq(bu().dt, 1, "snake-out clip flag");
+  H.eq(bu().ot, 0.5, "snake-out threshold");
+  H.eq(bu().fadelen, 0.04, "tip fade on while growing");
   m.destroy();
 });
 
@@ -283,30 +281,4 @@ test("slider-mesh: gradient texture uploads as premultiplied", () => {
   const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
   initMesh(m);
   H.eq(m.sliderTexture.source.alphaMode, "premultiplied-alpha", "declared truthfully");
-});
-
-test("slider-mesh: cap head texture is opaque track with white rim", () => {
-  // The growing tip must read as the track itself continuing roundly:
-  // opaque combo-colored core (hides the snake clip edge) with the same
-  // white border rim as the body, unlike the translucent body gradient.
-  const { newTextureData } = H.loadModule("scripts/SliderMesh.js");
-  const body = newTextureData([0xff0000, 0x00ff00]);
-  const cap = newTextureData([0xff0000, 0x00ff00], undefined, undefined, true);
-  H.eq(cap.width, 200, "cap row width");
-  H.eq(cap.height, 2, "cap has per-combo rows");
-  const at = (t, i) => t.data[(0 * t.width + i) * 4 + 3];
-  // body center translucent, cap core opaque
-  H.assert(at(body, 100) < 200, `body center translucent: ${at(body, 100)}`);
-  H.eq(at(cap, 100), 255, "cap core opaque");
-  H.eq(at(cap, 10), 255, "cap inner opaque");
-  // both end in the opaque white rim
-  H.eq(at(body, 190), 255, "body rim opaque");
-  H.eq(at(cap, 190), 255, "cap rim opaque");
-  // premultiplied throughout
-  for (const t of [body, cap]) {
-    for (let i = 0; i < t.data.length; i += 4) {
-      if (t.data[i] > t.data[i + 3] || t.data[i + 1] > t.data[i + 3] || t.data[i + 2] > t.data[i + 3])
-        throw new Error(`not premultiplied at ${i / 4}`);
-    }
-  }
 });

@@ -43,8 +43,13 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             // every hit time with NaN on first launch (a stale value from a
             // previous run is why retrying appeared to fix it).
             self.playbackRate = 1.0;
-            if (self.game.nightcore) self.playbackRate *= 1.5;
-            if (self.game.daycore) self.playbackRate *= 0.75;
+            // Rate mods are mutually exclusive (enforced by the settings
+            // UI); first match wins so a stale double-enable can never
+            // stack rates. The song clock (audio position x rate) and the
+            // unscaled chart stay in song time together at any rate, so no
+            // chart rescaling is needed (or valid) here.
+            if (self.game.nightcore || self.game.doubletime) self.playbackRate *= 1.5;
+            else if (self.game.daycore || self.game.halftime) self.playbackRate *= 0.75;
             // creating a copy of hitobjects
             self.hits = [];
             _.each(self.track.hitObjects, function (o) {
@@ -53,17 +58,10 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             if (!self.hits.length) {
                 throw new Error("This difficulty has no playable hit objects.");
             }
-            // DT/NC: the audio runs at playbackRate, so compress/expand all
-            // chart times onto that clock. Untouched at rate 1 (same refs).
+            // timeRate stays for wall-clock consumers (background video
+            // offset); gameplay itself runs on the song clock with the
+            // decoded (unscaled) chart at any rate.
             self.timeRate = self.playbackRate;
-            if (self.timeRate !== 1 && Osu && typeof Osu.scaleChartForRate === "function") {
-                const scaled = Osu.scaleChartForRate(self.track.hitObjects, self.track.timingPoints, self.timeRate);
-                self.hits = scaled.hits;
-                // hitsound/tick code walks track.timingPoints: point it at
-                // the scaled clone (shallow copy; the decoded track keeps
-                // unscaled times so retries never double-scale).
-                self.track = Object.assign({}, self.track, { timingPoints: scaled.timingPoints });
-            }
             self.offset = 0;
             self.currentHitIndex = 0; // index for all hit objects
             self.ended = false;
@@ -199,9 +197,9 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
 
             let scoreModMultiplier = 1.0;
             if (game.easy) scoreModMultiplier *= 0.50;
-            if (game.daycore) scoreModMultiplier *= 0.30;
+            if (game.daycore || game.halftime) scoreModMultiplier *= 0.30;
             if (game.hardrock) scoreModMultiplier *= 1.06;
-            if (game.nightcore) scoreModMultiplier *= 1.12;
+            if (game.nightcore || game.doubletime) scoreModMultiplier *= 1.12;
             if (game.hidden) scoreModMultiplier *= 1.06;
 
             self.scoreOverlay = new ScoreOverlay({ width: game.window.innerWidth, height: game.window.innerHeight }, this.HP, scoreModMultiplier);

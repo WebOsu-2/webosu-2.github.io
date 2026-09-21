@@ -10,7 +10,7 @@ const IDS = [
   "dim-range", "dim-range-indicator", "dim-range-value",
   "blur-range", "blur-range-indicator", "blur-range-value",
   "cursorsize-range", "cursorsize-range-indicator", "cursorsize-range-value",
-  "showhwmouse-check", "snakein-check", "snakeout-check", "capstyle-select", "cursortrail-check", "autofullscreen-check",
+  "showhwmouse-check", "snakein-check", "snakeout-check", "cursortrail-check", "cursorpulse-check", "autofullscreen-check",
   "disable-wheel-check", "disable-button-check",
   "lbutton1select", "rbutton1select", "pausebuttonselect", "pausebutton2select",
   "mastervolume-range", "mastervolume-range-indicator", "mastervolume-range-value",
@@ -20,6 +20,7 @@ const IDS = [
   "beatmap-hitsound-check",
   "apibrowsing-select", "apidownload-select", "backgroundvideo-check",
   "easy-check", "hardrock-check", "daycore-check", "nightcore-check",
+  "doubletime-check", "halftime-check",
   "hidden-check", "relax-check", "autopilot-check", "autoplay-check",
   "hidenumbers-check", "hidegreat-check", "hidefollowpoints-check",
   "restoredefault-btn",
@@ -55,23 +56,43 @@ test("settings: binder boots against the redesigned page ids", () => {
   H.eq(gamesettings.apiBrowsing, "sayobot", "provider default");
   H.eq(gamesettings.apiDownload, "mino", "download default");
   H.eq(gamesettings.backgroundVideo, false, "video default off");
-  H.eq(gamesettings.capstyle, "track", "head style default");
   H.eq(gamesettings.cursortrail, true, "trail default on");
+  H.eq(gamesettings.cursorpulse, true, "pulse default on");
+  H.eq(gamesettings.doubletime, false, "DT default off");
+  H.eq(gamesettings.halftime, false, "HT default off");
 });
 
-test("settings: head-style select offers all cap styles, change persists", () => {
+test("settings: rate mods are mutually exclusive", () => {
+  // Stacking 0.75x with 1.5x would produce a nonsense rate; checking one
+  // clears the other three (boxes and stored values alike).
   setOptionPanel();
-  const sel = document.getElementById("capstyle-select");
-  const vals = sel.options.map((o) => o.value);
-  H.assert(vals.includes("track") && vals.includes("ball") && vals.includes("faint"), "cap options: " + vals);
-  sel.value = "ball";
-  sel.onchange();
-  H.eq(gamesettings.capstyle, "ball", "selection saved");
-  H.eq(JSON.parse(window.localStorage.getItem("osugamesettings")).capstyle, "ball", "persisted");
+  const box = (id) => document.getElementById(id);
+  box("doubletime-check").checked = true;
+  box("doubletime-check").onclick();
+  H.eq(gamesettings.doubletime, true, "DT on");
+  H.eq(gamesettings.nightcore, false, "NC cleared");
+  H.eq(gamesettings.halftime, false, "HT cleared");
+  H.eq(gamesettings.daycore, false, "DC cleared");
+  H.eq(box("nightcore-check").checked, false, "NC box cleared");
+  box("halftime-check").checked = true;
+  box("halftime-check").onclick();
+  H.eq(gamesettings.halftime, true, "HT on");
+  H.eq(gamesettings.doubletime, false, "DT cleared");
+  H.eq(box("doubletime-check").checked, false, "DT box cleared");
+  H.eq(JSON.parse(window.localStorage.getItem("osugamesettings")).halftime, true, "persisted");
+});
+
+test("settings: cursor visual toggles persist", () => {
+  setOptionPanel();
   const trail = document.getElementById("cursortrail-check");
   trail.checked = false;
   trail.onclick();
   H.eq(gamesettings.cursortrail, false, "trail toggle saved");
+  const pulse = document.getElementById("cursorpulse-check");
+  pulse.checked = false;
+  pulse.onclick();
+  H.eq(gamesettings.cursorpulse, false, "pulse toggle saved");
+  H.eq(JSON.parse(window.localStorage.getItem("osugamesettings")).cursorpulse, false, "persisted");
 });
 
 test("settings: provider selects built from registry, change persists", () => {

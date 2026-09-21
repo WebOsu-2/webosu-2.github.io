@@ -5,7 +5,7 @@ import Osu from './osu.js';
 import Playback from './playback.js';
 import * as PIXI from './lib/pixi.mjs';
 import { makeSliderBallData } from './sliderBall.js';
-import { makeTrailData, crispAlpha } from './sliderBall.js';
+import { makeTrailData } from './sliderBall.js';
 // Procedural cursor-trail dots for the game view (classic launchgame.js
 // reads them off window: it cannot import this ESM module).
 window.makeTrailData = makeTrailData;
@@ -61,6 +61,8 @@ function main() {
         relax: false,
         nightcore: false,
         daycore: false,
+        doubletime: false,
+        halftime: false,
         hardrock: false,
         easy: false,
         hidden: false,
@@ -116,36 +118,6 @@ function main() {
                 }),
             });
         } catch (e) { console.warn("slider ball texture:", e); }
-        // Crisp the skin cursor: its baked alpha ramps are very soft, so
-        // downscaled cursors render muddy. Tighten mid-tone alpha toward
-        // a crisp edge (shape and fully-opaque/transparent parts intact),
-        // then serve the processed bitmap to both the sprite cursor (via
-        // Skin) and the hardware cursor (data URL) in launchgame.
-        try {
-            const src = resources['sprites.json'].textures["cursor.png"];
-            const frame = src && src.frame;
-            const base = src && src.source && src.source.resource;
-            if (frame && base && window.createImageBitmap) {
-                window.createImageBitmap(base).then((bmp) => {
-                    try {
-                        const S = Math.max(1, Math.round(frame.width));
-                        const c = document.createElement("canvas");
-                        c.width = c.height = S;
-                        const g = c.getContext("2d");
-                        g.drawImage(bmp,
-                            frame.x, frame.y, frame.width, frame.height,
-                            0, 0, S, S);
-                        const img = g.getImageData(0, 0, S, S);
-                        const px = img.data;
-                        for (let i = 3; i < px.length; i += 4)
-                            px[i] = crispAlpha(px[i]);
-                        g.putImageData(img, 0, 0);
-                        window.Skin["cursor.png"] = PIXI.Texture.from(c);
-                        window.__crispCursorURL = c.toDataURL();
-                    } catch (e) { /* keep baked cursor on failure */ }
-                }).catch(() => {});
-            }
-        } catch (e) { /* keep baked cursor on failure */ }
     });
     
 

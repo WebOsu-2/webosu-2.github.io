@@ -14,13 +14,13 @@
 */
 
 import * as PIXI from './lib/pixi.mjs';
-import { makeSliderBallRamp } from './sliderBall.js';
 
 // GLSL ES 3.00 (v8 compiles custom programs as such; no #version needed,
 // mirroring v8's own raw-shader examples).
 const vertexSrc = `
 in vec4 position;
 out float dist;
+out float tpos;
 uniform float dx;
 uniform float dy;
 uniform float dt;
@@ -29,6 +29,7 @@ uniform float oy;
 uniform float ot;
 void main() {
     dist = position.w;
+    tpos = position.z;
     gl_Position = vec4(position.x, position.y, position.w + 2.0 * float(position.z * dt > ot), 1.0);
     gl_Position.x = gl_Position.x * dx + ox;
     gl_Position.y = gl_Position.y * dy + oy;
@@ -36,12 +37,24 @@ void main() {
 
 const fragmentSrc = `
 in float dist;
+in float tpos;
 uniform sampler2D uSampler2;
 uniform float alpha;
 uniform float texturepos;
+uniform float fadelen;
+uniform float dt;
+uniform float ot;
 out vec4 finalColor;
 void main() {
     finalColor = alpha * texture(uSampler2, vec2(dist, texturepos));
+    // Faint growing/receding tip: dissolve the body over a short band
+    // before the snake clip edge instead of ending in a hard cut (or a
+    // floating disk). Off (fadelen 0) for complete sliders.
+    if (fadelen > 0.0) {
+        float f = clamp(abs(tpos - ot * dt) / fadelen, 0.0, 1.0);
+        f = f * f * (3.0 - 2.0 * f);
+        finalColor = finalColor * f;
+    }
 }`;
 
 function makeUniforms() {
@@ -54,6 +67,7 @@ function makeUniforms() {
         oy: { value: 0, type: 'f32' },
         dt: { value: 0, type: 'f32' },
         ot: { value: 1, type: 'f32' },
+        fadelen: { value: 0, type: 'f32' },
     });
 }
 
@@ -74,16 +88,11 @@ function makeGeometry(verts, index) {
     return g;
 }
 
-// Exported for unit tests (gradient profile assertions).
-export function newTextureData(colors, SliderTrackOverride, SliderBorder, opaqueCore) {
-    // opaqueCore (cap texture): flat full alpha across the track so the
-    // rounded head hides the snake clip edge; the white border rim and
-    // outer feather are shared with the body gradient, so the head meets
-    // the track's borders exactly.
+function newTextureData(colors, SliderTrackOverride, SliderBorder) {
     const borderwidth = 0.128;
     const innerPortion = 1 - borderwidth;
-    const edgeOpacity = opaqueCore ? 1.0 : 0.8;
-    const centerOpacity = opaqueCore ? 1.0 : 0.3;
+    const edgeOpacity = 0.8;
+    const centerOpacity = 0.3;
     const blurrate = 0.015;
     const width = 200;
     let buff = new Uint8Array(colors.length * width * 4);
@@ -752,18 +761,6 @@ function unionSingleCoverage(vert, index) {
     return { verts: vert, index: outIndex };
 }
 
-function circlePoints(radius) {
-    let vert = [];
-    let index = [];
-    vert.push(0.0, 0.0, 0.0, 0.0);
-    for (let i = 0; i < DIVIDES; ++i) {
-        let theta = 2 * Math.PI / DIVIDES * i;
-        vert.push(radius * Math.cos(theta), radius * Math.sin(theta), 0.0, 1.0);
-        index.push(0, i + 1, (i + 1) % DIVIDES + 1);
-    }
-    return { verts: vert, index: index };
-}
-
 // Updated SliderMesh class using ES6 class syntax and extending PIXI.Container.
 export default class SliderMesh extends PIXI.Container {
     constructor(curve, radius, tintid) {
@@ -772,12 +769,9 @@ export default class SliderMesh extends PIXI.Container {
         const pts = curvePoints(curve.curve, radius);
         this.bodyGeom = makeGeometry(pts.verts, pts.index);
         this.bodyMesh = null;
-        this.capMesh = null;
         this.bodyShader = null;
-        this.capShader = null;
         this.alpha = 1.0;
         this.tintid = tintid;
-        this.capRow = 0.5;
         this.startt = 0.0;
         this.endt = 1.0;
         this.ensureMeshes();
@@ -789,30 +783,10 @@ export default class SliderMesh extends PIXI.Container {
     ensureMeshes() {
         if (this.bodyMesh) return;
         const P = SliderMesh.prototype;
-        if (!P.glProgram || !P.sliderTexture || !P.capTexture || !P.ballTexture || !P.circleGeom) return;
+        if (!P.glProgram || !P.sliderTexture) return;
         this.bodyShader = makeShader(P.sliderTexture.source);
-        // Cap style (settings -> window.game.capStyle, default 'track'):
-        // 'track' = opaque track-colored head (natural growth, hides the
-        // clip edge and meets the track borders); 'ball' = white ball
-        // ramp; 'faint' = translucent track gradient (classic ghost).
-        // Chosen per mesh creation (sliders live seconds, so a mid-map
-        // settings change applies to new sliders immediately).
-        const style = (typeof window !== 'undefined' && window.game && window.game.capStyle) || 'track';
-        if (style === 'ball') {
-            this.capShader = makeShader(P.ballTexture.source);
-            this.capRow = 0.5;
-        } else if (style === 'faint') {
-            this.capShader = makeShader(P.sliderTexture.source);
-            this.capRow = this.tintid / P.ncolors;
-        } else {
-            this.capShader = makeShader(P.capTexture.source);
-            this.capRow = this.tintid / P.ncolors;
-        }
         this.bodyMesh = new PIXI.Mesh({ geometry: this.bodyGeom, shader: this.bodyShader });
-        this.capMesh = new PIXI.Mesh({ geometry: P.circleGeom, shader: this.capShader });
-        this.capMesh.visible = false;
         this.addChild(this.bodyMesh);
-        this.addChild(this.capMesh);
     }
 
     initialize(colors, radius, transform, SliderTrackOverride, SliderBorder) {
@@ -829,28 +803,6 @@ export default class SliderMesh extends PIXI.Container {
         if (!P.glProgram) {
             P.glProgram = new PIXI.GlProgram({ name: 'slider', vertex: vertexSrc, fragment: fragmentSrc });
         }
-        if (!P.circleGeom) {
-            const cp = circlePoints(radius);
-            P.circleGeom = makeGeometry(cp.verts, cp.index);
-        }
-        if (!P.capTexture) {
-            // Opaque track-colored head for the cap mesh (per combo
-            // colors, like the body gradient but full alpha, so the
-            // rounded growing tip continues the track exactly).
-            const cd = newTextureData(colors, SliderTrackOverride, SliderBorder, true);
-            P.capTexture = new PIXI.Texture({
-                source: new PIXI.BufferImageSource({ resource: cd.data, width: cd.width, height: cd.height, alphaMode: 'premultiplied-alpha' }),
-            });
-        }
-        if (!P.ballTexture) {
-            // Opaque ball ramp for the cap mesh (single row; the cap
-            // shader samples it at texturepos 0.5). Built once: unlike
-            // the track gradient it does not depend on combo colors.
-            const ramp = makeSliderBallRamp();
-            P.ballTexture = new PIXI.Texture({
-                source: new PIXI.BufferImageSource({ resource: ramp.data, width: ramp.width, height: ramp.height, alphaMode: 'premultiplied-alpha' }),
-            });
-        }
         P.baseTransform = transform;
     }
 
@@ -859,7 +811,7 @@ export default class SliderMesh extends PIXI.Container {
     }
 
     // Push per-frame state (called every frame from updateSlider):
-    // body/cap visibility, snake clipping uniforms, color slot.
+    // body visibility, snake clipping uniforms, color slot, tip fade.
     sync() {
         this.ensureMeshes();
         const T = SliderMesh.prototype.baseTransform;
@@ -873,43 +825,32 @@ export default class SliderMesh extends PIXI.Container {
         let oy0 = T.oy;
         bu.ox = ox0;
         bu.oy = oy0;
-        const cu = this.capShader.resources.sliderUniforms.uniforms;
-        cu.alpha = this.alpha;
-        cu.texturepos = (typeof this.capRow === 'number') ? this.capRow : 0.5;
-        cu.dx = T.dx;
-        cu.dy = T.dy;
-        cu.dt = 0;
-        cu.ot = 1;
 
         if (this.startt === 0.0 && this.endt === 1.0) {
             bu.dt = 0;
             bu.ot = 1;
+            bu.fadelen = 0;
             this.bodyMesh.visible = true;
-            this.capMesh.visible = false;
         } else if (this.endt === 1.0) {
             if (this.startt !== 1.0) {
                 bu.dt = -1;
                 bu.ot = -this.startt;
+                bu.fadelen = 0.04;
                 this.bodyMesh.visible = true;
             } else {
+                bu.fadelen = 0;
                 this.bodyMesh.visible = false;
             }
-            const p = this.curve.pointAt(this.startt);
-            cu.ox = ox0 + p.x * T.dx;
-            cu.oy = oy0 + p.y * T.dy;
-            this.capMesh.visible = true;
         } else if (this.startt === 0.0) {
             if (this.endt !== 0.0) {
                 bu.dt = 1;
                 bu.ot = this.endt;
+                bu.fadelen = 0.04;
                 this.bodyMesh.visible = true;
             } else {
+                bu.fadelen = 0;
                 this.bodyMesh.visible = false;
             }
-            const p = this.curve.pointAt(this.endt);
-            cu.ox = ox0 + p.x * T.dx;
-            cu.oy = oy0 + p.y * T.dy;
-            this.capMesh.visible = true;
         } else {
             console.error("can't snake both end of slider");
         }
@@ -923,11 +864,8 @@ export default class SliderMesh extends PIXI.Container {
         try {
             if (this.bodyShader) this.bodyShader.destroy();
         } catch (e) { /* ignore */ }
-        try {
-            if (this.capShader) this.capShader.destroy();
-        } catch (e) { /* ignore */ }
-        this.bodyShader = this.capShader = null;
-        this.bodyMesh = this.capMesh = null;
+        this.bodyShader = null;
+        this.bodyMesh = null;
         super.destroy(options);
     }
 }

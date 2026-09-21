@@ -165,13 +165,7 @@ async function launchOSU(osu, beatmapid, version) {
         } catch (e) { setHardwareCursorFallback(); }
       };
       img.onerror = setHardwareCursorFallback;
-      // Prefer the crispened cursor bitmap prepared at skin load
-      // (same art, tightened alpha); fall back to the raw file.
-      try {
-        img.src = window.__crispCursorURL || "sprites/cursor.png";
-      } catch (e) {
-        img.src = "sprites/cursor.png";
-      }
+      img.src = "sprites/cursor.png";
     } catch (e) { setHardwareCursorFallback(); }
   }
   if (game.autoplay || game.autopilot) {
@@ -272,10 +266,12 @@ async function launchOSU(osu, beatmapid, version) {
       // Handle cursor
       game.cursor.x = (game.mouseX / 512) * gfx.width + gfx.xoffset;
       game.cursor.y = (game.mouseY / 384) * gfx.height + gfx.yoffset;
-      // Click pulse (desktop cursor pops on press, eases back on release)
+      // Click pulse (desktop cursor grows while held); gateable in
+      // settings, always eases back so a stuck button can't wedge it big
       const dtPulse = Math.min(100, Math.max(0, timestamp - (game.cursorLastT || timestamp)));
       game.cursorLastT = timestamp;
-      game.cursorPulse = game.down ? 1 : Math.max(0, (game.cursorPulse || 0) - dtPulse / 180);
+      if (game.cursorPulseEnabled === false) game.cursorPulse = 0;
+      else game.cursorPulse = game.down ? 1 : Math.max(0, (game.cursorPulse || 0) - dtPulse / 180);
       const cs = (game.cursor._baseScale || 0.3 * game.cursorSize) * (1 + 0.3 * game.cursorPulse);
       game.cursor.scale.x = game.cursor.scale.y = cs;
       game.cursor.bringToFront();
@@ -294,26 +290,26 @@ async function launchOSU(osu, beatmapid, version) {
       }
       const moved = Math.hypot(tx - game.trailLastX, ty - game.trailLastY);
       // Small additive glow dots, throttled so slow moves don't pile
-      // into a blob: stable's trail reads as discrete fading sparks.
-      if (moved > 5 && dtTrail > 12) {
+      // into a blob: discrete fading sparks like desktop osu!.
+      if (moved > 4 && dtTrail > 10) {
         const p = game.trail[game.trailCursor % game.trail.length];
         game.trailCursor++;
         p.x = tx;
         p.y = ty;
         p.age = 0;
-        p.peak = game.down ? 0.55 : 0.4;
+        p.peak = game.down ? 0.7 : 0.55;
         p.visible = true;
         game.trailLastX = tx;
         game.trailLastY = ty;
       }
-      const base = 0.35 * game.cursorSize;
+      const base = 0.38 * game.cursorSize;
       for (const p of game.trail) {
         if (!p.visible) continue;
         p.age += dtTrail;
-        const u = p.age / 200;
+        const u = p.age / 240;
         if (u >= 1) { p.visible = false; continue; }
-        p.alpha = (p.peak || 0.4) * (1 - u);
-        p.scale.x = p.scale.y = base * (1 - 0.6 * u);
+        p.alpha = (p.peak || 0.55) * (1 - u);
+        p.scale.x = p.scale.y = base * (1 - 0.55 * u);
       }
     }
     app.renderer.render(game.stage);

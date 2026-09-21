@@ -50,56 +50,6 @@ export function makeSliderBallData() {
     return { data: buff, width: S, height: S };
 }
 
-// 1D radial profile of the ball above, for the slider head/tail cap
-// mesh: the cap shader samples (dist, texturepos) like the body
-// gradient (u = center->edge, v = row), so the ball becomes a single
-// opaque row. Opaque core to 0.84R, gray rim, feathered edge to 0.98R:
-// the growing snake tip then renders as a solid ball head hiding the
-// clip edge, instead of a translucent disk with a visible cut behind it.
-export const BALL_RAMP_WIDTH = 256;
-export function makeSliderBallRamp() {
-    const W = BALL_RAMP_WIDTH;
-    const buff = new Uint8Array(W * 4);
-    for (let i = 0; i < W; ++i) {
-        const u = i / (W - 1); // 0 = center, 1 = rim
-        const d = u * 128; // match makeSliderBallData radii (px at 256)
-        let rgb, alpha;
-        if (d <= 96) {
-            const k = d / 96;
-            rgb = Math.round(255 - 18 * k * k);
-            alpha = 255;
-        } else if (d <= 108) {
-            rgb = Math.round(237 - 77 * (d - 96) / 12);
-            alpha = 255;
-        } else if (d < 126) {
-            rgb = 160;
-            alpha = Math.round(255 * (126 - d) / 18);
-        } else {
-            rgb = 0;
-            alpha = 0;
-        }
-        buff[i * 4] = Math.round(rgb * alpha / 255);
-        buff[i * 4 + 1] = Math.round(rgb * alpha / 255);
-        buff[i * 4 + 2] = Math.round(rgb * alpha / 255);
-        buff[i * 4 + 3] = alpha;
-    }
-    return { data: buff, width: W, height: 1 };
-}
-
-// Alpha tightening for the baked cursor art (see initgame): maps soft
-// mid-tone alpha toward a crisp edge while leaving fully transparent
-// and fully opaque pixels exactly intact, so the cursor shape is
-// unchanged but downscaled cursors render sharp instead of muddy.
-// Pure math (headless-testable); canvas plumbing lives in initgame.
-export function crispAlpha(a) {
-    if (a <= 0 || a >= 255) return a;
-    const u = a / 255;
-    // smoothstep(0.3, 0.7): gentler than a hard cutoff, keeps a ~2px AA
-    // ramp at skin resolution instead of the baked ~26px mush
-    const t = Math.max(0, Math.min(1, (u - 0.3) / 0.4));
-    return Math.round(255 * (t * t * (3 - 2 * t)));
-}
-
 // Soft round dot for the cursor trail (stable fades small dots behind
 // the cursor). Alpha falls off smoothly; same premultiplied contract.
 export const TRAIL_SIZE = 64;

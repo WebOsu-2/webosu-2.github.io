@@ -1,7 +1,7 @@
 // Unit tests: procedural osu!-style slider ball texture.
 "use strict";
 const H = require("./helpers");
-const { makeSliderBallData, BALL_SIZE, makeSliderBallRamp, BALL_RAMP_WIDTH, makeTrailData, TRAIL_SIZE, crispAlpha } = H.loadModule("scripts/sliderBall.js");
+const { makeSliderBallData, BALL_SIZE, makeTrailData, TRAIL_SIZE } = H.loadModule("scripts/sliderBall.js");
 
 function px(buf, S, x, y) {
   const o = (y * S + x) * 4;
@@ -48,30 +48,6 @@ test("slider-ball: buffer is consistently premultiplied", () => {
   }
 });
 
-test("slider-ball: cap ramp matches the ball profile (opaque core)", () => {
-  // The snake head/tail cap samples (dist, 0.5) on this single row: it
-  // must be the same opaque ball so the growing tip hides the clip edge.
-  const { data, width, height } = makeSliderBallRamp();
-  H.eq(width, BALL_RAMP_WIDTH, "ramp width");
-  H.eq(height, 1, "single row");
-  const at = (u) => {
-    const i = Math.round(u * (width - 1)) * 4;
-    return [data[i], data[i + 1], data[i + 2], data[i + 3]];
-  };
-  let [, , , a0] = at(0);
-  H.eq(a0, 255, "center opaque");
-  let [rMid, , , aMid] = at(0.5);
-  H.eq(aMid, 255, "mid opaque");
-  H.assert(rMid >= 230, `mid near-white: ${rMid}`);
-  let [, , , aRim] = at(0.84);
-  H.eq(aRim, 255, "rim still opaque");
-  let [, , , aOut] = at(0.99);
-  H.assert(aOut < 30, `feathered edge fades: ${aOut}`);
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i] > data[i + 3]) throw new Error(`ramp not premultiplied at ${i / 4}`);
-  }
-});
-
 test("slider-ball: trail dot is a soft premultiplied falloff", () => {  const { data, width, height } = makeTrailData();
   H.eq(width, TRAIL_SIZE, "trail size");
   H.eq(height, TRAIL_SIZE, "trail square");
@@ -89,22 +65,5 @@ test("slider-ball: trail dot is a soft premultiplied falloff", () => {  const { 
   for (let i = 0; i < data.length; i += 4) {
     if (data[i] > data[i + 3] || data[i] !== data[i + 1] || data[i] !== data[i + 2])
       throw new Error(`trail not white-premultiplied at ${i / 4}`);
-  }
-});
-
-test("slider-ball: crispAlpha tightens soft art, keeps extremes", () => {
-  // The baked cursor's ~26px alpha ramps downscale muddy; tightening
-  // mid-tones crisps edges while the shape (50% contour) and solid
-  // transparent/opaque parts stay put.
-  H.eq(crispAlpha(0), 0, "transparent stays");
-  H.eq(crispAlpha(255), 255, "opaque stays");
-  H.eq(crispAlpha(128), 129, "midpoint ~stays");
-  H.assert(crispAlpha(60) < 60, "low-mid darkened");
-  H.assert(crispAlpha(200) > 200, "high-mid brightened");
-  let last = -1;
-  for (let a = 0; a <= 255; a += 5) {
-    const v = crispAlpha(a);
-    if (v < last) throw new Error(`not monotonic at ${a}`);
-    last = v;
   }
 });

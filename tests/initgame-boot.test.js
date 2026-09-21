@@ -40,5 +40,6 @@ test("esm: entry import boots window.Osu/Playback/game", async () => {
   H.eq(typeof window.Playback, "function", "Playback constructor");
   H.eq(typeof window.game, "object", "game state");
   H.eq(window.scriptReady, true, "scriptReady flag");
-  H.eq(typeof window.Osu.scaleChartForRate, "function", "rate helper attached");
+  H.eq(window.game.doubletime, false, "doubletime default off");
+  H.eq(window.game.halftime, false, "halftime default off");
 });

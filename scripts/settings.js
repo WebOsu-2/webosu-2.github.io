@@ -66,8 +66,8 @@ var defaultsettings = {
     showhwmouse: false,
     snakein: true,
     snakeout: true,
-    capstyle: "track",
     cursortrail: true,
+    cursorpulse: true,
     autofullscreen: false,
 
     disableWheel: false,
@@ -96,6 +96,8 @@ var defaultsettings = {
     daycore: false,
     hardrock: false,
     nightcore: false,
+    doubletime: false,
+    halftime: false,
     hidden: false,
     autoplay: false,
     relax: false,
@@ -122,8 +124,8 @@ function setOptionPanel() {
       window.game.showhwmouse = this.showhwmouse;
       window.game.snakein = this.snakein;
       window.game.snakeout = this.snakeout;
-      window.game.capStyle = this.capstyle;
       window.game.cursorTrail = this.cursortrail;
+      window.game.cursorPulseEnabled = this.cursorpulse;
       window.game.autofullscreen = this.autofullscreen;
 
       window.game.allowMouseScroll = !this.disableWheel;
@@ -147,6 +149,8 @@ function setOptionPanel() {
       window.game.daycore = this.daycore;
       window.game.hardrock = this.hardrock;
       window.game.nightcore = this.nightcore;
+      window.game.doubletime = this.doubletime;
+      window.game.halftime = this.halftime;
       window.game.hidden = this.hidden;
       window.game.autoplay = this.autoplay;
       window.game.relax = this.relax;
@@ -200,6 +204,36 @@ function setOptionPanel() {
     };
   }
 
+  // Rate mods are mutually exclusive (stacking 0.75x with 1.5x would
+  // produce a nonsense rate): checking one clears the other three.
+  function bindRateMods(idsItems) {
+    const boxes = idsItems.map(([id, item]) => {
+      const c = document.getElementById(id);
+      if (c) c.checked = gamesettings[item];
+      return c;
+    });
+    const sync = () => {
+      idsItems.forEach(([id, item], i) => {
+        if (boxes[i]) {
+          boxes[i].checked = gamesettings[item];
+          checkdefault(boxes[i], item);
+        }
+      });
+    };
+    gamesettings.restoreCallbacks.push(sync);
+    sync();
+    boxes.forEach((c, i) => {
+      if (!c) return;
+      c.onclick = function () {
+        idsItems.forEach(([, item], j) => {
+          gamesettings[item] = (i === j) ? c.checked : false;
+        });
+        sync();
+        gamesettings.loadToGame();
+        saveToLocal();
+      };
+    });
+  }
   function bindExclusiveCheck(id1, item1, id2, item2) {
     let c1 = document.getElementById(id1);
     let c2 = document.getElementById(id2);
@@ -431,12 +465,8 @@ function setOptionPanel() {
   bindcheck("showhwmouse-check", "showhwmouse");
   bindcheck("snakein-check", "snakein");
   bindcheck("snakeout-check", "snakeout");
-  bindselect("capstyle-select", "capstyle", [
-    { value: "track", label: "Track head (natural)" },
-    { value: "ball", label: "White ball" },
-    { value: "faint", label: "Faint (classic)" },
-  ]);
   bindcheck("cursortrail-check", "cursortrail");
+  bindcheck("cursorpulse-check", "cursorpulse");
   bindcheck("autofullscreen-check", "autofullscreen");
 
   // input settings
@@ -469,12 +499,12 @@ function setOptionPanel() {
 
   // mods
   bindExclusiveCheck("easy-check", "easy", "hardrock-check", "hardrock");
-  bindExclusiveCheck(
-    "daycore-check",
-    "daycore",
-    "nightcore-check",
-    "nightcore"
-  );
+  bindRateMods([
+    ["doubletime-check", "doubletime"],
+    ["nightcore-check", "nightcore"],
+    ["halftime-check", "halftime"],
+    ["daycore-check", "daycore"],
+  ]);
   bindExclusiveCheck3(
     "relax-check",
     "relax",

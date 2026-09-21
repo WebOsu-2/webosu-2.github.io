@@ -542,9 +542,6 @@ import CircumscribedCircle from './curves/CircumscribedCircle.js';
         }
     }
 
-    // exposed for Playback rate mods + unit tests
-    Osu.scaleChartForRate = scaleChartForRate;
-
     export default Osu;
     export { Track };
 
@@ -553,37 +550,6 @@ import CircumscribedCircle from './curves/CircumscribedCircle.js';
     // inputs are never mutated so retries (which reuse the decoded track)
     // stay idempotent. Judgement/approach windows are intentionally NOT
     // scaled: like stable osu!, OD/AR ms-windows are rate-independent.
-    function scaleChartForRate(hitObjects, timingPoints, rate) {
-        // Fail-safe: a bogus rate must never poison the chart (dividing by
-        // undefined/NaN once NaN'd every hit time on first launch).
-        if (!Number.isFinite(rate) || rate <= 0) rate = 1;
-        const tp = (timingPoints || []).map(function (p) {
-            const base = (p.trueMillisecondsPerBeat !== undefined) ? p.trueMillisecondsPerBeat : p.millisecondsPerBeat;
-            return Object.assign({}, p, {
-                offset: p.offset / rate,
-                millisecondsPerBeat: p.millisecondsPerBeat / rate,
-                trueMillisecondsPerBeat: base / rate,
-            });
-        });
-        if (!tp.length) {
-            tp.push({ offset: 0, millisecondsPerBeat: 500 / rate, meter: 4, sampleSet: 0, sampleIndex: 0, volume: 100, uninherited: 1, kaiMode: 0, trueMillisecondsPerBeat: 500 / rate });
-        }
-        let ti = 0;
-        const hits = (hitObjects || []).map(function (o) {
-            const hit = Object.assign({}, o);
-            hit.time = o.time / rate;
-            hit.endTime = o.endTime / rate;
-            if (hit.type === "slider") {
-                hit.sliderTime = o.sliderTime / rate;
-                hit.sliderTimeTotal = o.sliderTimeTotal / rate;
-            }
-            while (ti + 1 < tp.length && tp[ti + 1].offset <= hit.time) ti++;
-            hit.timing = tp[Math.min(ti, tp.length - 1)];
-            return hit;
-        });
-        return { hits: hits, timingPoints: tp };
-    }
-
     function preallocateTiming(track) {
         let currentTimingIndex = 0;
         for (let i=0; i<track.hitObjects.length; ++i) {
