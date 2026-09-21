@@ -50,6 +50,6 @@ jobs:
           check scripts/config.js "function getDownloadUrl"
           check scripts/downloader.js "function startpreview"
           check scripts/settings.js "function setOptionPanel"
-          check scripts/osu.js "scaleChartForRate"
+          check scripts/osu.js "export default"
           check scripts/playback.js "export default"
           exit $fail
