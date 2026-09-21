@@ -42,16 +42,18 @@ uniform sampler2D uSampler2;
 uniform float alpha;
 uniform float texturepos;
 uniform float fadelen;
-uniform float dt;
-uniform float ot;
+uniform float ct;
 out vec4 finalColor;
 void main() {
     finalColor = alpha * texture(uSampler2, vec2(dist, texturepos));
     // Faint growing/receding tip: dissolve the body over a short band
     // before the snake clip edge instead of ending in a hard cut (or a
-    // floating disk). Off (fadelen 0) for complete sliders.
+    // floating disk). Off (fadelen 0) for complete sliders. ct carries
+    // the precomputed clip threshold (ot*dt) because redeclaring the
+    // vertex uniforms dt/ot here breaks the program link (uniform
+    // precision mismatch across stages).
     if (fadelen > 0.0) {
-        float f = clamp(abs(tpos - ot * dt) / fadelen, 0.0, 1.0);
+        float f = clamp(abs(tpos - ct) / fadelen, 0.0, 1.0);
         f = f * f * (3.0 - 2.0 * f);
         finalColor = finalColor * f;
     }
@@ -68,6 +70,7 @@ function makeUniforms() {
         dt: { value: 0, type: 'f32' },
         ot: { value: 1, type: 'f32' },
         fadelen: { value: 0, type: 'f32' },
+        ct: { value: 0, type: 'f32' },
     });
 }
 
@@ -830,15 +833,18 @@ export default class SliderMesh extends PIXI.Container {
             bu.dt = 0;
             bu.ot = 1;
             bu.fadelen = 0;
+            bu.ct = 0;
             this.bodyMesh.visible = true;
         } else if (this.endt === 1.0) {
             if (this.startt !== 1.0) {
                 bu.dt = -1;
                 bu.ot = -this.startt;
                 bu.fadelen = 0.04;
+                bu.ct = this.startt;
                 this.bodyMesh.visible = true;
             } else {
                 bu.fadelen = 0;
+                bu.ct = 0;
                 this.bodyMesh.visible = false;
             }
         } else if (this.startt === 0.0) {
@@ -846,9 +852,11 @@ export default class SliderMesh extends PIXI.Container {
                 bu.dt = 1;
                 bu.ot = this.endt;
                 bu.fadelen = 0.04;
+                bu.ct = this.endt;
                 this.bodyMesh.visible = true;
             } else {
                 bu.fadelen = 0;
+                bu.ct = 0;
                 this.bodyMesh.visible = false;
             }
         } else {

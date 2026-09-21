@@ -103,17 +103,20 @@ test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  con
   H.eq(bu().alpha, 0.8, "alpha pushed");
   H.eq(bu().texturepos, 0, "body uses combo row 0");
   H.eq(bu().fadelen, 0.04, "tip fade on while snaking");
+  H.eq(bu().ct, 0.5, "fade threshold at tail");
   H.eq(m.bodyMesh.visible, true, "body shown while snaking");
   m.startt = 0.0; m.endt = 1.0;
   m.sync();
   H.eq(bu().dt, 0, "full slider");
   H.eq(bu().fadelen, 0, "tip fade off when full");
+  H.eq(bu().ct, 0, "threshold unused when full");
   H.eq(m.bodyMesh.visible, true, "body shown when full");
   m.startt = 0.0; m.endt = 0.5; m.alpha = 0.8;
   m.sync();
   H.eq(bu().dt, 1, "snake-out clip flag");
   H.eq(bu().ot, 0.5, "snake-out threshold");
   H.eq(bu().fadelen, 0.04, "tip fade on while growing");
+  H.eq(bu().ct, 0.5, "fade threshold at tip");
   m.destroy();
 });
 
