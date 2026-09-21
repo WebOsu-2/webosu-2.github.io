@@ -10,7 +10,7 @@ const IDS = [
   "dim-range", "dim-range-indicator", "dim-range-value",
   "blur-range", "blur-range-indicator", "blur-range-value",
   "cursorsize-range", "cursorsize-range-indicator", "cursorsize-range-value",
-  "showhwmouse-check", "snakein-check", "snakeout-check", "autofullscreen-check",
+  "showhwmouse-check", "snakein-check", "snakeout-check", "capstyle-select", "cursortrail-check", "autofullscreen-check",
   "disable-wheel-check", "disable-button-check",
   "lbutton1select", "rbutton1select", "pausebuttonselect", "pausebutton2select",
   "mastervolume-range", "mastervolume-range-indicator", "mastervolume-range-value",
@@ -55,6 +55,23 @@ test("settings: binder boots against the redesigned page ids", () => {
   H.eq(gamesettings.apiBrowsing, "sayobot", "provider default");
   H.eq(gamesettings.apiDownload, "mino", "download default");
   H.eq(gamesettings.backgroundVideo, false, "video default off");
+  H.eq(gamesettings.capstyle, "track", "head style default");
+  H.eq(gamesettings.cursortrail, true, "trail default on");
+});
+
+test("settings: head-style select offers all cap styles, change persists", () => {
+  setOptionPanel();
+  const sel = document.getElementById("capstyle-select");
+  const vals = sel.options.map((o) => o.value);
+  H.assert(vals.includes("track") && vals.includes("ball") && vals.includes("faint"), "cap options: " + vals);
+  sel.value = "ball";
+  sel.onchange();
+  H.eq(gamesettings.capstyle, "ball", "selection saved");
+  H.eq(JSON.parse(window.localStorage.getItem("osugamesettings")).capstyle, "ball", "persisted");
+  const trail = document.getElementById("cursortrail-check");
+  trail.checked = false;
+  trail.onclick();
+  H.eq(gamesettings.cursortrail, false, "trail toggle saved");
 });
 
 test("settings: provider selects built from registry, change persists", () => {

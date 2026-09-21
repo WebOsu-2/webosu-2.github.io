@@ -1,7 +1,7 @@
 // Unit tests: procedural osu!-style slider ball texture.
 "use strict";
 const H = require("./helpers");
-const { makeSliderBallData, BALL_SIZE, makeSliderBallRamp, BALL_RAMP_WIDTH, makeTrailData, TRAIL_SIZE } = H.loadModule("scripts/sliderBall.js");
+const { makeSliderBallData, BALL_SIZE, makeSliderBallRamp, BALL_RAMP_WIDTH, makeTrailData, TRAIL_SIZE, crispAlpha } = H.loadModule("scripts/sliderBall.js");
 
 function px(buf, S, x, y) {
   const o = (y * S + x) * 4;
@@ -72,8 +72,7 @@ test("slider-ball: cap ramp matches the ball profile (opaque core)", () => {
   }
 });
 
-test("slider-ball: trail dot is a soft premultiplied falloff", () => {
-  const { data, width, height } = makeTrailData();
+test("slider-ball: trail dot is a soft premultiplied falloff", () => {  const { data, width, height } = makeTrailData();
   H.eq(width, TRAIL_SIZE, "trail size");
   H.eq(height, TRAIL_SIZE, "trail square");
   const px = (x, y) => data[(y * width + x) * 4 + 3];
@@ -90,5 +89,22 @@ test("slider-ball: trail dot is a soft premultiplied falloff", () => {
   for (let i = 0; i < data.length; i += 4) {
     if (data[i] > data[i + 3] || data[i] !== data[i + 1] || data[i] !== data[i + 2])
       throw new Error(`trail not white-premultiplied at ${i / 4}`);
+  }
+});
+
+test("slider-ball: crispAlpha tightens soft art, keeps extremes", () => {
+  // The baked cursor's ~26px alpha ramps downscale muddy; tightening
+  // mid-tones crisps edges while the shape (50% contour) and solid
+  // transparent/opaque parts stay put.
+  H.eq(crispAlpha(0), 0, "transparent stays");
+  H.eq(crispAlpha(255), 255, "opaque stays");
+  H.eq(crispAlpha(128), 129, "midpoint ~stays");
+  H.assert(crispAlpha(60) < 60, "low-mid darkened");
+  H.assert(crispAlpha(200) > 200, "high-mid brightened");
+  let last = -1;
+  for (let a = 0; a <= 255; a += 5) {
+    const v = crispAlpha(a);
+    if (v < last) throw new Error(`not monotonic at ${a}`);
+    last = v;
   }
 });
