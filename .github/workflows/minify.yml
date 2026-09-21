@@ -73,8 +73,11 @@ jobs:
           grep -oh 'scripts/[a-z0-9./_-]*\.js?v=[0-9a-f]*' index.html scripts/jsloader.js 2>/dev/null | sort -u | head -n 8
           test "$(grep -oh 'scripts/[a-z0-9./_-]*\.js?v=[0-9a-f]*' index.html | wc -l)" -gt 0
           echo "busted relative imports (expect > 0):"
-          grep -rhoE "'\.\.?/[^']*\.m?js\?v=[0-9a-f]*'|\"\.\.?/[^\"]*\.m?js\?v=[0-9a-f]*'" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | sort -u | head -n 8
-          test "$(grep -rhoE "'\.\.?/[^']*\.m?js\?v=[0-9a-f]*'|\"\.\.?/[^\"]*\.m?js\?v=[0-9a-f]*'" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | wc -l)" -gt 0
+          grep -rhoE "\./[^\"']*\.m?js\?v=[0-9a-f]+" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | sort -u | head -n 8
+          test "$(grep -rhoE "\./[^\"']*\.m?js\?v=[0-9a-f]+" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | wc -l)" -gt 0
+          echo "unbusted relative imports (expect 0):"
+          grep -rhoE "\./[^\"']*\.m?js['\"]" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | sort -u | head -n 8
+          test "$(grep -rhoE "\./[^\"']*\.m?js['\"]" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | wc -l)" -eq 0
 
       # Push changes to `gh-pages` branch
       - name: Push to gh-pages branch
