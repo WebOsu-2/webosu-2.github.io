@@ -197,11 +197,62 @@ function curvePoints(curve0, radius, skipUnion) {
     // (invisible); t is preserved, so ball/snake mapping is unaffected.
     // Segments with both endpoints snapped duplicate earlier geometry,
     // so their quads are skipped outright (exact fold removal).
+    // A snap must never fold the path back on itself: merging a
+    // same-leg micro-jog onto a neighbor would manufacture a hairpin the
+    // map never had (visible doubled wedge). Three guards (genuine folds
+    // pass all three, artifacts fail at least one):
+    // 1. the merged point must not reverse the local direction past 120
+    //    degrees (folds continue in the same direction after the merge);
+    // 2. the merged segment must run near-parallel (|cos| > 0.9) to a
+    //    segment at the target: only genuinely overlapping legs share
+    //    quads (rejects merges ACROSS a joint);
+    // 3. no phantom spikes: the merge must not leave a sharp (>30°)
+    //    deflection on micro-short (<4px) segments at the touched joints.
+    //    A 1px snap wiggle would otherwise grow a full R-sized round fan
+    //    and miter thorn (join geometry keys on angle, not length).
     const snapped = new Array(curve.length).fill(false);
+    // sharp micro-deflection test on explicit coords (prev -> joint ->
+    // next): true for a >30° kink on <4px segments (a phantom spike).
+    const sharpMicro = (px, py, kx, ky, nx, ny) => {
+        const ax = kx - px, ay = ky - py;
+        const bx = nx - kx, by = ny - ky;
+        const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+        if (la < 1e-9 || lb < 1e-9 || la >= 4 || lb >= 4) return false;
+        return Math.abs(ax * by - bx * ay) / (la * lb) > 0.5;
+    };
     for (let i = 0; i < curve.length; ++i) {
         for (let j = 0; j < i - 1; ++j) {
             const dx = curve[i].x - curve[j].x, dy = curve[i].y - curve[j].y;
             if (dx * dx + dy * dy < 1.6 * 1.6) {
+                const ax0 = curve[i].x - curve[i - 1].x, ay0 = curve[i].y - curve[i - 1].y;
+                const la0 = Math.hypot(ax0, ay0);
+                let parallel = la0 < 1e-9;
+                if (!parallel) {
+                    const segs = [];
+                    if (j > 0) segs.push([curve[j].x - curve[j - 1].x, curve[j].y - curve[j - 1].y]);
+                    if (j + 1 < curve.length) segs.push([curve[j + 1].x - curve[j].x, curve[j + 1].y - curve[j].y]);
+                    for (const [bx, by] of segs) {
+                        const lb = Math.hypot(bx, by);
+                        if (lb > 1e-9 && Math.abs(ax0 * bx + ay0 * by) / (la0 * lb) > 0.9) {
+                            parallel = true;
+                            break;
+                        }
+                    }
+                }
+                if (!parallel) continue;
+                if (i > 0 && i + 1 < curve.length) {
+                    const ax = curve[j].x - curve[i - 1].x, ay = curve[j].y - curve[i - 1].y;
+                    const bx = curve[i + 1].x - curve[j].x, by = curve[i + 1].y - curve[j].y;
+                    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+                    if (la > 1e-9 && lb > 1e-9 && (ax * bx + ay * by) / (la * lb) < -0.5) continue;
+                }
+                // spike guard on post-snap coords (point i lands on j):
+                // joints i-1 and i+1 keep their spots but gain/lose an
+                // edge, joint i moves.
+                const nx = curve[j].x, ny = curve[j].y;
+                if ((i - 1 >= 1 && sharpMicro(curve[i - 2].x, curve[i - 2].y, curve[i - 1].x, curve[i - 1].y, nx, ny)) ||
+                    (i + 1 < curve.length && sharpMicro(curve[i - 1].x, curve[i - 1].y, nx, ny, curve[i + 1].x, curve[i + 1].y)) ||
+                    (i + 2 < curve.length && sharpMicro(nx, ny, curve[i + 1].x, curve[i + 1].y, curve[i + 2].x, curve[i + 2].y))) continue;
                 curve[i] = { x: curve[j].x, y: curve[j].y, t: curve[i].t };
                 snapped[i] = true;
                 break;
@@ -274,16 +325,29 @@ function curvePoints(curve0, radius, skipUnion) {
     // butt-section lenses (visible as streaks/doubled regions).
     const miterL = new Array(curve.length).fill(-1);
     const miterR = new Array(curve.length).fill(-1);
-    function miterAt(i, side) {
+    // Bevel triangles for joints past the miter limit (emitted with the
+    // strip below): chamfer (buttPrev, buttCurr, jointCenter) tiles the
+    // concave notch exactly with zero overlap (lazer gets this for free
+    // from its distance-field joins; the CPU equivalent is bevel).
+    const bevels = [];
+    // Standard miter limit (cf. Canvas/SVG): welding past ~2R throws a
+    // long thorn past the far edge on sharp turns (visible spike +
+    // doubled wedge once span-collapsing spreads it). Past the limit the
+    // inner side bevels instead; the outer side keeps its round join.
+    const MITER_LIMIT = 2.0;
+    function miterPos(i, side) {
         // Intersect the two inner edge lines at joint i. side +1 = left
         // offsets, -1 = right offsets (matching the butt-vertex layout).
+        // Returns {x, y, d2} (d2 = squared distance from the joint) or
+        // null on degenerate segments; pushes nothing (callers push only
+        // accepted miters, so rejected spikes leave no stray verts).
         const ux1 = (curve[i].x - curve[i - 1].x);
         const uy1 = (curve[i].y - curve[i - 1].y);
         const ux2 = (curve[i + 1].x - curve[i].x);
         const uy2 = (curve[i + 1].y - curve[i].y);
         const l1 = Math.hypot(ux1, uy1);
         const l2 = Math.hypot(ux2, uy2);
-        if (l1 < 1e-6 || l2 < 1e-6) return -1;
+        if (l1 < 1e-6 || l2 < 1e-6) return null;
         const d1x = ux1 / l1, d1y = uy1 / l1;
         const d2x = ux2 / l2, d2y = uy2 / l2;
         const n1x = -d1y * side, n1y = d1x * side;
@@ -306,8 +370,8 @@ function curvePoints(curve0, radius, skipUnion) {
                 my = (p1y + p2y) / 2;
             }
         }
-        vert.push(mx, my, curve[i].t, 1.0);
-        return vert.length / 4 - 1;
+        const dx = mx - cx, dy = my - cy;
+        return { x: mx, y: my, d2: dx * dx + dy * dy };
     }
     for (let i = 1; i < curve.length - 1; ++i) {
         let dx1 = curve[i].x - curve[i - 1].x;
@@ -338,15 +402,31 @@ function curvePoints(curve0, radius, skipUnion) {
         // snake in/out per-fragment on it, so fans left at t=0 would pop
         // in ahead of the snake head and the slider would fall apart.
         // Outer side keeps the round join (established look); the inner
-        // side is miter-welded (shared vertex, exact tiling, no overlap).
+        // side is miter-welded (shared vertex, exact tiling, no overlap),
+        // or beveled past the miter limit (chamfer, no thorn, no notch).
+        // Butt layout per segment k: L_prev=5k-4, R_prev=5k-3,
+        // L_curr=5k-2, R_curr=5k-1; joint centers C_k=5k.
+        const lim2 = MITER_LIMIT * MITER_LIMIT * radius * radius;
         if (t > 0) {
             // outer (right-side) round join
             addArc(5 * i, 5 * i - 1, 5 * i + 2, curve[i].t);
-            miterL[i] = miterAt(i, +1);
+            const mp = miterPos(i, +1);
+            if (mp && mp.d2 <= lim2) {
+                vert.push(mp.x, mp.y, curve[i].t, 1.0);
+                miterL[i] = vert.length / 4 - 1;
+            } else if (mp) {
+                bevels.push([5 * i - 2, 5 * i + 1, 5 * i]);
+            }
         }
         else if (t < 0) {
             addArc(5 * i, 5 * i + 1, 5 * i - 2, curve[i].t);
-            miterR[i] = miterAt(i, -1);
+            const mp = miterPos(i, -1);
+            if (mp && mp.d2 <= lim2) {
+                vert.push(mp.x, mp.y, curve[i].t, 1.0);
+                miterR[i] = vert.length / 4 - 1;
+            } else if (mp) {
+                bevels.push([5 * i - 1, 5 * i + 2, 5 * i]);
+            }
         }
         // t == 0 unreachable (epsilon skip above); straight joints need no
         // join geometry at all.
@@ -581,23 +661,32 @@ function curvePoints(curve0, radius, skipUnion) {
             index.push(...newIdx);
         }
     }
+    // Bevel chamfers (past-miter-limit joints): exact notch fill, never
+    // trimmed (trims only own strip tris) but still unioned below.
+    // Degenerate chamfers (collinear butt verts) rasterize nothing.
+    for (const [a, b, c] of bevels) {
+        if (a === b || b === c || c === a) continue;
+        const ax = vert[4 * a], ay = vert[4 * a + 1];
+        const bx = vert[4 * b], by = vert[4 * b + 1];
+        const cx = vert[4 * c], cy = vert[4 * c + 1];
+        if (Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) < 1e-9) continue;
+        index.push(a, b, c);
+    }
     if (skipUnion) return { verts: vert, index: index };
     return unionSingleCoverage(vert, index);
 }
 
 // Exact single-coverage union over the strip/fan triangles. Sharp kinks
 // are pre-fanned and side-by-side legs pre-trimmed above, but curved
-// tight loops, endpoint contacts and trim seams can still cover regions
-// 2..N times, which alpha-doubles into streaks. Triangles in real area
-// overlap (exact pair test, boundary-exclusive, so clean tiling is
-// untouched) are subdivided (3 levels, conforming: shared edges compute
-// identical midpoints, deduplicated so neighbors tile exactly and
-// rasterize exactly once per GPU fill rules); a micro-triangle is dropped
-// only if fully covered by an already-emitted triangle (first coverage
+// tight loops, endpoint contacts, trim seams and non-parallel leg
+// crossings can still cover regions 2..N times, which alpha-doubles into
+// streaks. Triangles in real area overlap (exact pair test,
+// boundary-exclusive, so clean tiling is untouched) carve already-emitted
+// geometry out of themselves by exact convex subtraction
+// (Sutherland-Hodgman per clip edge, disjoint pieces, first coverage
 // wins, zero holes by construction). Position/t/dist interpolate
-// linearly, so the gradient and snake clipping are unchanged where kept.
-// Residual overdraw is a sub-micro-triangle boundary sliver (~1px, same
-// order as the rasterizer's own shared-edge pixels).
+// linearly, so the gradient is unchanged where kept. Residual overdraw
+// is at most an eps-wide boundary hairline (rasterizes to nothing).
 function unionSingleCoverage(vert, index) {
     const EPS = 1e-9;
     const at = (id) => ({ x: vert[4 * id], y: vert[4 * id + 1], t: vert[4 * id + 2], d: vert[4 * id + 3] });
@@ -689,29 +778,14 @@ function unionSingleCoverage(vert, index) {
             }
         });
     }
-    // conforming midpoint cache: identical edges yield identical vertices
-    const midCache = new Map();
-    function midId(P, Q) {
-        const k = [P.x, P.y, P.t, P.d, Q.x, Q.y, Q.t, Q.d].join(",");
-        let id = midCache.get(k);
-        if (id === undefined) {
-            id = vert.length / 4;
-            vert.push((P.x + Q.x) / 2, (P.y + Q.y) / 2, (P.t + Q.t) / 2, (P.d + Q.d) / 2);
-            midCache.set(k, id);
-        }
-        return id;
-    }
-    function subdivide4(A, B, C, out) {
-        const mAB = midId(A.v, B.v), mBC = midId(B.v, C.v), mCA = midId(C.v, A.v);
-        const m = (id) => ({ id, v: at(id) });
-        const MAB = m(mAB), MBC = m(mBC), MCA = m(mCA);
-        out.push([A, MAB, MCA], [MAB, B, MBC], [MCA, MBC, C], [MAB, MBC, MCA]);
-    }
     const outIndex = [];
-    // emitted pieces, for first-coverage-wins tests (order-dependent:
-    // a piece only ever tests against strictly earlier tris, so drop
-    // chains terminate at drawn geometry)
-    const emitted = []; // { v:[p,p,p], box, ti }
+    // Emitted pieces (convex point lists with boxes). Earlier emissions
+    // are never modified, so every covered point keeps exactly its first
+    // coverage: zero holes by construction. Later tris carve already-
+    // emitted geometry out of themselves (exact subtraction), so
+    // non-parallel leg crossings subtract exactly instead of leaving
+    // kept-whole micro bands.
+    const emitted = []; // { v:[p...], box, ti }
     const emitGrid = new Map();
     function emitInsert(v, box, ti) {
         const ei = emitted.length;
@@ -722,26 +796,136 @@ function unionSingleCoverage(vert, index) {
             l.push(ei);
         }
     }
-    const centroidOf = (V) => [
-        (V[0].x + V[1].x + V[2].x) / 3,
-        (V[0].y + V[1].y + V[2].y) / 3,
-    ];
-    // exact area overlap, boundary-exclusive (shared tiling edges never
-    // count, so clean neighbors pass through untouched)
-    function hits(A, B) {
-        for (let i = 0; i < 3; ++i) for (let j = 0; j < 3; ++j) {
-            const a0 = A[i], a1 = A[(i + 1) % 3], b0 = B[j], b1 = B[(j + 1) % 3];
+    const polyBox = (V) => {
+        let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
+        for (const p of V) {
+            if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y;
+            if (p.x > x1) x1 = p.x; if (p.y > y1) y1 = p.y;
+        }
+        return [x0, y0, x1, y1];
+    };
+    const polyArea2 = (V) => {
+        let s = 0;
+        for (let i = 0; i < V.length; ++i) {
+            const a = V[i], b = V[(i + 1) % V.length];
+            s += a.x * b.y - b.x * a.y;
+        }
+        return s;
+    };
+    const centroidOfPoly = (V) => {
+        let x = 0, y = 0;
+        for (const p of V) { x += p.x; y += p.y; }
+        return [x / V.length, y / V.length];
+    };
+    // strict point-in-convex-poly (boundary does not count: shared tiling
+    // edges must never trigger a cut)
+    function inPolyStrict(px, py, V) {
+        let sign = 0;
+        for (let i = 0; i < V.length; ++i) {
+            const a = V[i], b = V[(i + 1) % V.length];
+            const c = (b.x - a.x) * (py - a.y) - (b.y - a.y) * (px - a.x);
+            if (Math.abs(c) < 1e-9) return false;
+            const s = c > 0 ? 1 : -1;
+            if (sign !== 0 && s !== sign) return false;
+            sign = s;
+        }
+        return true;
+    }
+    // inclusive point-in-convex-poly (boundary counts: full containment).
+    // Degenerate clips (zero area: a line or point) contain nothing —
+    // without this guard every later piece would test "inside" them and
+    // be wrongly dropped, punching holes along snapped segments.
+    function inPolyOrOn(px, py, V) {
+        if (Math.abs(polyArea2(V)) < 1e-9) return false;
+        let sign = 0;
+        for (let i = 0; i < V.length; ++i) {
+            const a = V[i], b = V[(i + 1) % V.length];
+            const c = (b.x - a.x) * (py - a.y) - (b.y - a.y) * (px - a.x);
+            if (Math.abs(c) < 1e-9) continue;
+            const s = c > 0 ? 1 : -1;
+            if (sign !== 0 && s !== sign) return false;
+            sign = s;
+        }
+        return true;
+    }
+    // proper (area) overlap between convex polys, boundary-exclusive, so
+    // clean tiling neighbors never cut each other
+    function polysHit(A, B) {
+        for (let i = 0; i < A.length; ++i) for (let j = 0; j < B.length; ++j) {
+            const a0 = A[i], a1 = A[(i + 1) % A.length], b0 = B[j], b1 = B[(j + 1) % B.length];
             if (segCross(a0.x, a0.y, a1.x, a1.y, b0.x, b0.y, b1.x, b1.y)) return true;
         }
-        const [cax, cay] = centroidOf(A), [cbx, cby] = centroidOf(B);
-        return inTri(cax, cay, B, true) || inTri(cbx, cby, A, true);
+        const ca = centroidOfPoly(A), cb = centroidOfPoly(B);
+        return inPolyStrict(ca[0], ca[1], B) || inPolyStrict(cb[0], cb[1], A);
     }
-    // classify a candidate piece against emitted geometry: 'in' (every
-    // corner inside-or-on one emitted triangle -> drop, covered),
-    // 'out' (no exact overlap with anything -> keep whole), 'cut'
-    // (straddles -> subdivide further, or keep whole at max depth)
-    function statusOf(V, box, selfTi) {
-        let hit = false;
+    function pushVert(p) {
+        const id = vert.length / 4;
+        vert.push(p.x, p.y, p.t, p.d);
+        return id;
+    }
+    function lerpPt(P, Q, s) {
+        return {
+            x: P.x + s * (Q.x - P.x), y: P.y + s * (Q.y - P.y),
+            t: P.t + s * (Q.t - P.t), d: P.d + s * (Q.d - P.d),
+        };
+    }
+    // Sutherland-Hodgman clip of convex P against one half-plane of clip
+    // edge A->B (keepOutside selects the side). Boundary hugs the kept
+    // side (eps): edge-touching fragments survive here and die at the
+    // area gate, so tiling edges never gap.
+    function clipHalf(P, A, B, keepOutside, ccw) {
+        const ex = B.x - A.x, ey = B.y - A.y;
+        const keep = (p) => {
+            const c = ex * (p.y - A.y) - ey * (p.x - A.x);
+            return ccw ? (keepOutside ? c < -1e-9 : c >= -1e-9)
+                       : (keepOutside ? c > 1e-9 : c <= 1e-9);
+        };
+        const crossPt = (Pp, Q) => {
+            const f0 = (Pp.x - A.x) * ey - (Pp.y - A.y) * ex;
+            const f1 = (Q.x - A.x) * ey - (Q.y - A.y) * ex;
+            const s = Math.abs(f1 - f0) < 1e-18 ? 0 : f0 / (f0 - f1);
+            return lerpPt(Pp, Q, s < 0 ? 0 : (s > 1 ? 1 : s));
+        };
+        const out = [];
+        for (let i = 0; i < P.length; ++i) {
+            const cur = P[i], nxt = P[(i + 1) % P.length];
+            const cin = keep(cur), nin = keep(nxt);
+            if (cin && nin) out.push(nxt);
+            else if (cin && !nin) out.push(crossPt(cur, nxt));
+            else if (!cin && nin) { out.push(crossPt(cur, nxt)); out.push(nxt); }
+        }
+        return out;
+    }
+    // Exact convex subtraction P \ E (E convex, any winding): sequential
+    // outside-clips per clip edge yield disjoint pieces; the inside-
+    // inside remnant (P inside E) is dropped by the caller.
+    function subtractPoly(P, E) {
+        const ccw = polyArea2(E) >= 0;
+        const parts = [];
+        let rest = P;
+        for (let e = 0; e < E.length; ++e) {
+            const A = E[e], B = E[(e + 1) % E.length];
+            const outside = clipHalf(rest, A, B, true, ccw);
+            if (outside.length >= 3) parts.push(outside);
+            rest = clipHalf(rest, A, B, false, ccw);
+            if (rest.length < 3) break;
+        }
+        return parts;
+    }
+    if (typeof globalThis.__UDbg !== "undefined") globalThis.__UDbg.marked = marked.filter(Boolean).length;
+    const triArea2 = (A, B, C) => (B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y);
+    tris.forEach((tr, ti) => {
+        if (!marked[ti]) {
+            // Zero-area tris (snapped duplicate segments, collapsed fans)
+            // rasterize nothing: skip them so they can never act as
+            // degenerate subtractors below.
+            if (Math.abs(triArea2(tr.v[0], tr.v[1], tr.v[2])) < 1e-9) return;
+            outIndex.push(tr.ids[0], tr.ids[1], tr.ids[2]);
+            emitInsert(tr.v, tr.box, ti);
+            return;
+        }
+        let pieces = [tr.v];
+        const box = tr.box;
         const seen = new Set();
         for (const k of cellsOf(box)) {
             const cell = emitGrid.get(k);
@@ -750,47 +934,30 @@ function unionSingleCoverage(vert, index) {
                 if (seen.has(ei)) continue;
                 seen.add(ei);
                 const e = emitted[ei];
-                if (e.ti === selfTi) continue;
+                if (e.ti === ti) continue;
                 if (e.box[0] > box[2] || e.box[2] < box[0] || e.box[1] > box[3] || e.box[3] < box[1]) continue;
-                if (V.every((p) => inTri(p.x, p.y, e.v, false))) return 'in';
-                if (hits(V, e.v)) hit = true;
+                if (Math.abs(polyArea2(e.v)) < 1e-9) continue; // degenerate subtractor: covers nothing
+                const next = [];
+                for (const P of pieces) {
+                    if (P.every((p) => inPolyOrOn(p.x, p.y, e.v))) continue; // fully covered: drop
+                    if (!polysHit(P, e.v)) { next.push(P); continue; }
+                    next.push(...subtractPoly(P, e.v));
+                    if (next.length > 64) break;
+                }
+                pieces = next;
+                if (pieces.length > 64 || !pieces.length) break;
             }
+            if (pieces.length > 64 || !pieces.length) break;
         }
-        return hit ? 'cut' : 'out';
-    }
-    const MAXLV = 3;
-    if (typeof globalThis.__UDbg !== "undefined") globalThis.__UDbg.marked = marked.filter(Boolean).length;
-    tris.forEach((tr, ti) => {
-        const V = tr.ids.map((id) => ({ id, v: at(id) }));
-        if (!marked[ti]) {
-            outIndex.push(tr.ids[0], tr.ids[1], tr.ids[2]);
-            emitInsert(tr.v, tr.box, ti);
-            return;
-        }
-        // Fixed two subdivision levels (16 conforming micros): interior
-        // micros drop via containment below, boundary straddlers are
-        // kept as ~2px slivers (invisible in motion); deeper recursion
-        // explodes on area overlaps without visual gain (bands are the
-        // trim stage's job, with exact midlines).
-        const stack = [[V[0], V[1], V[2], 0]];
-        while (stack.length) {
-            const [A, B, C, lv] = stack.pop();
-            if (A.id === B.id || B.id === C.id || C.id === A.id) continue;
-            const vv = [A.v, B.v, C.v];
-            const area2 = (vv[1].x - vv[0].x) * (vv[2].y - vv[0].y) - (vv[2].x - vv[0].x) * (vv[1].y - vv[0].y);
-            if (Math.abs(area2) < 1e-9) continue; // degenerate: rasterizes nothing
-            const box = boxOf(...vv);
-            const st = statusOf(vv, box, ti);
-            if (typeof globalThis.__UDbg !== "undefined") globalThis.__UDbg['st_' + st] = (globalThis.__UDbg['st_' + st] || 0) + 1;
-            if (st === 'in') continue; // dropped (covered by emitted)
-            if (st === 'out' || lv >= MAXLV) {
-                outIndex.push(A.id, B.id, C.id);
-                emitInsert(vv, box, ti);
-                continue;
+        for (const P of pieces) {
+            if (P.length < 3 || Math.abs(polyArea2(P)) < 1e-9) continue;
+            const ids = P.map(pushVert);
+            for (let f = 1; f < ids.length - 1; ++f) {
+                const A = P[0], B = P[f], C = P[f + 1];
+                if (Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 < 1e-9) continue;
+                outIndex.push(ids[0], ids[f], ids[f + 1]);
             }
-            const nxt = [];
-            subdivide4(A, B, C, nxt);
-            for (const [a, b, c] of nxt) stack.push([a, b, c, lv + 1]);
+            emitInsert(P, polyBox(P), ti);
         }
     });
     return { verts: vert, index: outIndex };
