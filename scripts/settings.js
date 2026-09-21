@@ -66,6 +66,8 @@ var defaultsettings = {
     showhwmouse: false,
     snakein: true,
     snakeout: true,
+    capstyle: "track",
+    cursortrail: true,
     autofullscreen: false,
 
     disableWheel: false,
@@ -120,6 +122,8 @@ function setOptionPanel() {
       window.game.showhwmouse = this.showhwmouse;
       window.game.snakein = this.snakein;
       window.game.snakeout = this.snakeout;
+      window.game.capStyle = this.capstyle;
+      window.game.cursorTrail = this.cursortrail;
       window.game.autofullscreen = this.autofullscreen;
 
       window.game.allowMouseScroll = !this.disableWheel;
@@ -181,6 +185,7 @@ function setOptionPanel() {
   // FIXME: checkdefault: 1 to 1 bind
   function bindcheck(id, item) {
     let c = document.getElementById(id);
+    if (!c) return;
     c.checked = gamesettings[item];
     gamesettings.restoreCallbacks.push(function () {
       c.checked = gamesettings[item];
@@ -426,6 +431,12 @@ function setOptionPanel() {
   bindcheck("showhwmouse-check", "showhwmouse");
   bindcheck("snakein-check", "snakein");
   bindcheck("snakeout-check", "snakeout");
+  bindselect("capstyle-select", "capstyle", [
+    { value: "track", label: "Track head (natural)" },
+    { value: "ball", label: "White ball" },
+    { value: "faint", label: "Faint (classic)" },
+  ]);
+  bindcheck("cursortrail-check", "cursortrail");
   bindcheck("autofullscreen-check", "autofullscreen");
 
   // input settings

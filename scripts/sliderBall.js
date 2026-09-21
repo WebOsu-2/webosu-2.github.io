@@ -86,6 +86,20 @@ export function makeSliderBallRamp() {
     return { data: buff, width: W, height: 1 };
 }
 
+// Alpha tightening for the baked cursor art (see initgame): maps soft
+// mid-tone alpha toward a crisp edge while leaving fully transparent
+// and fully opaque pixels exactly intact, so the cursor shape is
+// unchanged but downscaled cursors render sharp instead of muddy.
+// Pure math (headless-testable); canvas plumbing lives in initgame.
+export function crispAlpha(a) {
+    if (a <= 0 || a >= 255) return a;
+    const u = a / 255;
+    // smoothstep(0.3, 0.7): gentler than a hard cutoff, keeps a ~2px AA
+    // ramp at skin resolution instead of the baked ~26px mush
+    const t = Math.max(0, Math.min(1, (u - 0.3) / 0.4));
+    return Math.round(255 * (t * t * (3 - 2 * t)));
+}
+
 // Soft round dot for the cursor trail (stable fades small dots behind
 // the cursor). Alpha falls off smoothly; same premultiplied contract.
 export const TRAIL_SIZE = 64;

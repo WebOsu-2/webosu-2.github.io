@@ -109,22 +109,25 @@ async function launchOSU(osu, beatmapid, version) {
   game.trailLastY = -1e9;
   game.trailLastT = 0;
   game.cursorPulse = 0;
-  try {
-    if (typeof window.makeTrailData === "function") {
-      const td = window.makeTrailData();
-      game.trailTex = new PIXI.Texture({
-        source: new PIXI.BufferImageSource({ resource: td.data, width: td.width, height: td.height, alphaMode: 'premultiplied-alpha' }),
-      });
-      for (let i = 0; i < 24; ++i) {
-        const p = new PIXI.Sprite(game.trailTex);
-        p.anchor.set(0.5);
-        p.visible = false;
-        p.age = 1e9;
-        game.stage.addChild(p);
-        game.trail.push(p);
+    if (game.cursorTrail === false) {
+      game.trail = [];
+    } else try {
+      if (typeof window.makeTrailData === "function") {
+        const td = window.makeTrailData();
+        game.trailTex = new PIXI.Texture({
+          source: new PIXI.BufferImageSource({ resource: td.data, width: td.width, height: td.height, alphaMode: 'premultiplied-alpha' }),
+        });
+        for (let i = 0; i < 20; ++i) {
+          const p = new PIXI.Sprite(game.trailTex);
+          p.anchor.set(0.5);
+          p.visible = false;
+          p.blendMode = 'add';
+          p.age = 1e9;
+          game.stage.addChild(p);
+          game.trail.push(p);
+        }
       }
-    }
-  } catch (e) { game.trail = []; }
+    } catch (e) { game.trail = []; }
 
   // switch page to game view
   if (game.autofullscreen) document.documentElement.requestFullscreen();
@@ -162,7 +165,13 @@ async function launchOSU(osu, beatmapid, version) {
         } catch (e) { setHardwareCursorFallback(); }
       };
       img.onerror = setHardwareCursorFallback;
-      img.src = "sprites/cursor.png";
+      // Prefer the crispened cursor bitmap prepared at skin load
+      // (same art, tightened alpha); fall back to the raw file.
+      try {
+        img.src = window.__crispCursorURL || "sprites/cursor.png";
+      } catch (e) {
+        img.src = "sprites/cursor.png";
+      }
     } catch (e) { setHardwareCursorFallback(); }
   }
   if (game.autoplay || game.autopilot) {
@@ -284,25 +293,27 @@ async function launchOSU(osu, beatmapid, version) {
         game.trailLastY = ty;
       }
       const moved = Math.hypot(tx - game.trailLastX, ty - game.trailLastY);
-      if (moved > 3 && dtTrail > 0) {
+      // Small additive glow dots, throttled so slow moves don't pile
+      // into a blob: stable's trail reads as discrete fading sparks.
+      if (moved > 5 && dtTrail > 12) {
         const p = game.trail[game.trailCursor % game.trail.length];
         game.trailCursor++;
         p.x = tx;
         p.y = ty;
         p.age = 0;
-        p.peak = game.down ? 0.5 : 0.3;
+        p.peak = game.down ? 0.55 : 0.4;
         p.visible = true;
         game.trailLastX = tx;
         game.trailLastY = ty;
       }
-      const base = 0.5 * game.cursorSize;
+      const base = 0.35 * game.cursorSize;
       for (const p of game.trail) {
         if (!p.visible) continue;
         p.age += dtTrail;
-        const u = p.age / 240;
+        const u = p.age / 200;
         if (u >= 1) { p.visible = false; continue; }
-        p.alpha = (p.peak || 0.3) * (1 - u);
-        p.scale.x = p.scale.y = base * (1 - 0.5 * u);
+        p.alpha = (p.peak || 0.4) * (1 - u);
+        p.scale.x = p.scale.y = base * (1 - 0.6 * u);
       }
     }
     app.renderer.render(game.stage);
