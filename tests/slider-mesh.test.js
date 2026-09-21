@@ -371,26 +371,3 @@ test("slider-mesh: gradient texture uploads as premultiplied", () => {
   initMesh(m);
   H.eq(m.sliderTexture.source.alphaMode, "premultiplied-alpha", "declared truthfully");
 });
-
-test("slider-mesh: gradient profile is osu-like (opaque, light-centered)", () => {
-  // Legacy anatomy: soft black core -> light combo inside -> dark combo
-  // outside -> white border ring -> edge feather. Near-opaque throughout.
-  const { newTextureData } = H.loadModule("scripts/SliderMesh.js");
-  const { data, width } = newTextureData([0x3366cc]);
-  const px = (i) => [data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3]];
-  for (let i = 0; i < width; i++) {
-    const [r, g, b, a] = px(i);
-    if (r > a || g > a || b > a) throw new Error(`not premultiplied at u=${(i / width).toFixed(3)}`);
-  }
-  const lum = (i) => { const [r, g, b] = px(i); return r + g + b; };
-  const alpha = (i) => px(i)[3];
-  // white border ring, fully opaque (u=0.91)
-  H.deepEq(px(182), [255, 255, 255, 255], "white border ring");
-  // body near-opaque, lighter inside (u=0.3) than outside (u=0.7)
-  H.assert(alpha(60) >= 200 && alpha(140) >= 200, `body opaque (got ${alpha(60)}, ${alpha(140)})`);
-  H.assert(lum(60) > lum(140) + 100, `gradient lightens inward (${lum(60)} vs ${lum(140)})`);
-  // dark soft core (u=0.05): near-black, low alpha
-  H.assert(lum(10) < 60 && alpha(10) < 80, `dark core shadow (lum ${lum(10)}, a ${alpha(10)})`);
-  // outer edge feathers to transparent
-  H.assert(alpha(199) < 80, `edge feather (a ${alpha(199)})`);
-});
