@@ -94,77 +94,115 @@ test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  con
   initMesh(m);
   m.sync(); // meshes build lazily once shared state exists
   H.assert(m.bodyMesh, "body mesh built");
-  H.assert(m.tipMesh, "rounded tip cap built");
+  H.assert(m.snakeMesh, "snake mesh built");
   const bu = () => m.bodyShader.resources.sliderUniforms.uniforms;
   m.startt = 0.5; m.endt = 1.0; m.alpha = 0.8;
   m.sync();
-  H.eq(bu().dt, -1, "snake-in clip flag");
-  H.eq(bu().ot, -0.5, "snake-in threshold");
+  H.eq(bu().dt, 0, "body always full-draw (shape comes from geometry)");
+  H.eq(bu().ot, 1, "no shader clip");
   H.eq(bu().alpha, 0.8, "alpha pushed");
   H.eq(bu().texturepos, 0, "body uses combo row 0");
-  H.eq(bu().fadelen, undefined, "no fade uniform (tip cap covers the cut)");
-  H.eq(m.bodyMesh.visible, true, "body shown while snaking");
-  H.eq(m.tipMesh.visible, true, "rounded tip shown while receding");
+  H.eq(bu().fadelen, undefined, "no fade uniform (seamless by construction)");
+  H.eq(m.bodyMesh.visible, false, "body hidden while snaking");
+  H.eq(m.snakeMesh.visible, true, "partial path shown while receding");
   m.startt = 0.0; m.endt = 1.0;
   m.sync();
-  H.eq(bu().dt, 0, "full slider");
   H.eq(m.bodyMesh.visible, true, "body shown when full");
-  H.eq(m.tipMesh.visible, false, "tip hidden when full");
+  H.eq(m.snakeMesh.visible, false, "snake hidden when full");
   m.startt = 0.0; m.endt = 0.5; m.alpha = 0.8;
   m.sync();
-  H.eq(bu().dt, 1, "snake-out clip flag");
-  H.eq(bu().ot, 0.5, "snake-out threshold");
-  H.eq(m.tipMesh.visible, true, "rounded tip shown while growing");
+  H.eq(m.bodyMesh.visible, false, "body hidden while growing");
+  H.eq(m.snakeMesh.visible, true, "partial path shown while growing");
+  m.startt = 0.0; m.endt = 0.0;
+  m.sync();
+  H.eq(m.bodyMesh.visible, false, "body hidden when empty");
+  H.eq(m.snakeMesh.visible, false, "snake hidden when empty");
   m.destroy();
 });
 
-test("slider-mesh: growing tip is a rounded half-disk at the snake head", () => {
-  // While growing, the tip fan must sit centered on the snake head with
-  // rim verts exactly one radius out, bulging forward only (no backward
-  // half that would double-draw the body), all tagged with the head's t
-  // so clipping keeps the whole fan.
+test("slider-mesh: partialPoints truncates with exact head interpolation", () => {
+  const { partialPoints } = H.loadModule("scripts/SliderMesh.js");
+  const pts = [
+    { x: 0, y: 0, t: 0 },
+    { x: 100, y: 0, t: 0.5 },
+    { x: 200, y: 0, t: 1 },
+  ];
+  H.deepEq(partialPoints(pts, 0, 1), pts, "full range is identity");
+  H.deepEq(partialPoints(pts, 0, 0.5), pts.slice(0, 2), "grid-aligned cut");
+  H.deepEq(partialPoints(pts, 0.25, 0.75),
+    [{ x: 50, y: 0, t: 0.25 }, { x: 100, y: 0, t: 0.5 }, { x: 150, y: 0, t: 0.75 }],
+    "interpolated boundaries");
+  H.deepEq(partialPoints(pts, 0.5, 1), pts.slice(1), "recede range");
+  H.eq(partialPoints([], 0, 0.5).length, 0, "empty in, empty out");
+});
+
+test("slider-mesh: snake rebuild is a finite partial path with a round head", () => {
+  // osu backend: while snaking, the mesh IS the truncated path (round cap
+  // at the head), so no clip edge or second mesh can ever seam or gap.
   const R = 50;
   const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   initMesh(m);
+  const usedVerts = (mesh) => {
+    const idx = Array.from(mesh.snakeGeom.indexBuffer.data);
+    const pos = mesh.snakeGeom.attributes.position.buffer.data;
+    const used = new Set();
+    for (let i = 0; i < idx.length; i += 3) {
+      const [a, b, c] = [idx[i], idx[i + 1], idx[i + 2]];
+      if (a === 0 && b === 0 && c === 0) continue; // unused slot
+      for (const v of [a, b, c]) {
+        if (!(v >= 0 && v < mesh.snakeVertCap)) throw new Error(`snake index ${v} out of range`);
+        used.add(v);
+      }
+    }
+    return { used, pos };
+  };
   m.startt = 0.0; m.endt = 0.5;
   m.sync();
-  const tipPos = (mesh) => mesh.tipGeom.attributes.position.buffer.data;
-  const checkTip = (mesh, hx, hy, ht, fwdX, label) => {
-    const pos = tipPos(mesh);
-    H.finiteArray(Array.from(pos), label + " tip positions");
-    const idx = Array.from(mesh.tipGeom.indexBuffer.data);
-    const divs = idx.length / 3;
-    H.eq(pos.length / 4, divs + 2, label + " fan vert count");
-    const cx = pos[0], cy = pos[1];
-    H.assert(Math.abs(cx - hx) < 1e-9 && Math.abs(cy - hy) < 1e-9,
-      `${label}: fan center (${cx}, ${cy}) at snake head (${hx}, ${hy})`);
-    H.eq(pos[2], ht, label + " center t");
-    H.eq(pos[3], 0.0, label + " center dist");
-    for (let v = 1; v < pos.length / 4; v++) {
-      const d = Math.hypot(pos[4 * v] - cx, pos[4 * v + 1] - cy);
-      // float32 buffer storage: allow sub-pixel slop (invisible)
-      if (Math.abs(d - R) > 1e-3) throw new Error(`${label}: rim vert ${v} at radius ${d} (want ${R})`);
-      H.eq(pos[4 * v + 2], ht, `${label}: rim t`);
-      H.eq(pos[4 * v + 3], 1.0, `${label}: rim dist`);
-      const along = (pos[4 * v] - cx) * fwdX;
-      if (along < -1e-9) throw new Error(`${label}: rim vert ${v} lies behind the clip line (would double-draw)`);
+  H.eq(m.lastSnake, "0,0.5", "snake contents keyed by head");
+  m.sync();
+  H.eq(m.lastSnake, "0,0.5", "no rebuild without head movement");
+  {
+    const { used, pos } = usedVerts(m);
+    H.assert(used.size > 10, "snake has geometry");
+    for (const v of used) {
+      for (let k = 0; k < 4; ++k)
+        if (!Number.isFinite(pos[4 * v + k])) throw new Error(`snake vert ${v} not finite`);
+      // partial path x in [0,100], head at (100,0): everything within R
+      if (pos[4 * v] < -R - 1 || pos[4 * v] > 100 + R + 1 ||
+          Math.abs(pos[4 * v + 1]) > R + 1)
+        throw new Error(`snake vert ${v} outside partial path`);
     }
-  };
-  // straight slider, head at midpoint growing along +x (fan center tucked
-  // 1px back under the body clip edge so no hairline gap can open)
-  checkTip(m, 99, 0, 0.5, 1, "growing");
-  // receding: head at midpoint, cap bulges back along -x
+    // round head: cap nose one radius past the head point (100, 0)
+    let nose = false;
+    for (const v of used)
+      if (Math.abs(pos[4 * v] - (100 + R)) < 2 && Math.abs(pos[4 * v + 1]) < 2) nose = true;
+    H.assert(nose, "round cap nose at head + R (no flat cut)");
+  }
+  // receding side rebuilds from the other end
   m.startt = 0.5; m.endt = 1.0;
   m.sync();
-  checkTip(m, 101, 0, 0.5, -1, "receding");
-  // degenerate curve still poses a finite tip (tangent fallback)
+  H.eq(m.snakeMesh.visible, true, "snake shown while receding");
+  H.eq(m.lastSnake, "0.5,1", "recede key");
+  {
+    const { used, pos } = usedVerts(m);
+    let nose = false;
+    for (const v of used)
+      if (Math.abs(pos[4 * v] - (100 - R)) < 2 && Math.abs(pos[4 * v + 1]) < 2) nose = true;
+    H.assert(nose, "round cap nose at recede head - R");
+  }
+  // degenerate curve still rebuilds finite (tangent/cap fallbacks)
   const hit = { x: 100, y: 100, keyframes: [{ x: 100, y: 100 }], pixelLength: 50 };
   const dm = new SliderMesh(new LinearBezier(hit, false), R, 0);
   initMesh(dm);
   dm.startt = 0.0; dm.endt = 0.5;
   dm.sync();
-  H.finiteArray(Array.from(tipPos(dm)), "degenerate tip positions");
-  H.eq(dm.tipMesh.visible, true, "degenerate tip shown");
+  H.eq(dm.snakeMesh.visible, true, "degenerate snake shown");
+  {
+    const { used, pos } = usedVerts(dm);
+    for (const v of used)
+      for (let k = 0; k < 4; ++k)
+        if (!Number.isFinite(pos[4 * v + k])) throw new Error(`degenerate snake vert ${v} not finite`);
+  }
   m.destroy(); dm.destroy();
 });
 
