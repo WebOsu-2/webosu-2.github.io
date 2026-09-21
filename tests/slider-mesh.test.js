@@ -96,11 +96,21 @@ test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  con
   H.assert(m.bodyMesh && m.capMesh, "both meshes built");
   H.eq(m.capMesh.visible, false, "cap hidden on full slider");
   const bu = () => m.bodyShader.resources.sliderUniforms.uniforms;
+  const cu = () => m.capShader.resources.sliderUniforms.uniforms;
+  // the cap is the opaque ball ramp, not the translucent track
+  // gradient: separate sampler, single row sampled at its middle
+  H.assert(
+    m.capShader.resources.uSampler2 !== m.bodyShader.resources.uSampler2,
+    "cap has its own sampler"
+  );
   m.startt = 0.5; m.endt = 1.0; m.alpha = 0.8;
   m.sync();
   H.eq(bu().dt, -1, "snake-in clip flag");
   H.eq(bu().ot, -0.5, "snake-in threshold");
   H.eq(bu().alpha, 0.8, "alpha pushed");
+  H.eq(bu().texturepos, 0, "body uses combo row 0");
+  H.eq(cu().texturepos, 0.5, "cap samples ball ramp middle");
+  H.eq(cu().alpha, 0.8, "cap follows body alpha");
   H.eq(m.capMesh.visible, true, "cap shown while snaking");
   m.startt = 0.0; m.endt = 1.0;
   m.sync();
