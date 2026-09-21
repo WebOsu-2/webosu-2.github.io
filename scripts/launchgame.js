@@ -267,11 +267,14 @@ async function launchOSU(osu, beatmapid, version) {
       game.cursor.x = (game.mouseX / 512) * gfx.width + gfx.xoffset;
       game.cursor.y = (game.mouseY / 384) * gfx.height + gfx.yoffset;
       // Click pulse (desktop cursor grows while held); gateable in
-      // settings, always eases back so a stuck button can't wedge it big
+      // settings, always eases back so a stuck button can't wedge it big.
+      // Inflate ramps softly (~140ms) instead of popping; deflate keeps
+      // its snappier ~180ms ease.
       const dtPulse = Math.min(100, Math.max(0, timestamp - (game.cursorLastT || timestamp)));
       game.cursorLastT = timestamp;
       if (game.cursorPulseEnabled === false) game.cursorPulse = 0;
-      else game.cursorPulse = game.down ? 1 : Math.max(0, (game.cursorPulse || 0) - dtPulse / 180);
+      else if (game.down) game.cursorPulse = Math.min(1, (game.cursorPulse || 0) + dtPulse / 140);
+      else game.cursorPulse = Math.max(0, (game.cursorPulse || 0) - dtPulse / 180);
       const cs = (game.cursor._baseScale || 0.3 * game.cursorSize) * (1 + 0.3 * game.cursorPulse);
       game.cursor.scale.x = game.cursor.scale.y = cs;
       game.cursor.bringToFront();
