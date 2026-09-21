@@ -26,11 +26,11 @@ test("slider-ball: opaque white core sized to the track", () => {
     H.eq(a, 255, "rim opaque");
     H.assert(r < 230 && r === g && g === b, `rim gray: ${r},${g},${b}`);
   }
-  // top-light shading: crown brighter than base (stable sliderb look)
+  // top-light shading: crown clearly brighter than base (stable sliderb look)
   {
     const [top] = px(data, 256, Math.round(c), Math.round(c - 60));
     const [bot] = px(data, 256, Math.round(c), Math.round(c + 60));
-    H.assert(top > bot + 5, `directional shading (crown ${top} vs base ${bot})`);
+    H.assert(top > bot + 10, `directional shading (crown ${top} vs base ${bot})`);
   }
   // outside (r >= 126): transparent
   {
