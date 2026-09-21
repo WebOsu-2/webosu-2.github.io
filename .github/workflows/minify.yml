@@ -62,9 +62,22 @@ jobs:
           for f in scripts/*.js; do
             sed -i -E 's#"(scripts/[^"]*\.js)"#"\1?v='"$V"'"#g' "$f"
           done
+          # ESM relative imports ('./x.js', '../lib/y.mjs', any depth,
+          # either quote style after minification): without this a fresh
+          # entry module loads stale cached dependencies (module found
+          # but a new export missing). Excludes already-busted refs.
+          find scripts -name '*.js' ! -name '*.min.js' | while read -r f; do
+            sed -i -E "s#(['\"])(\./|\.\./)([^'\"?]*\.m?js)(['\"])#\1\2\3?v=$V\4#g" "$f"
+          done
           echo "busted refs (expect > 0):"
           grep -oh 'scripts/[a-z0-9./_-]*\.js?v=[0-9a-f]*' index.html scripts/jsloader.js 2>/dev/null | sort -u | head -n 8
           test "$(grep -oh 'scripts/[a-z0-9./_-]*\.js?v=[0-9a-f]*' index.html | wc -l)" -gt 0
+          echo "busted relative imports (expect > 0):"
+          grep -rhoE "\./[^\"']*\.m?js\?v=[0-9a-f]+" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | sort -u | head -n 8
+          test "$(grep -rhoE "\./[^\"']*\.m?js\?v=[0-9a-f]+" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | wc -l)" -gt 0
+          echo "unbusted relative imports (expect 0):"
+          grep -rhoE "\./[^\"']*\.m?js['\"]" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | sort -u | head -n 8
+          test "$(grep -rhoE "\./[^\"']*\.m?js['\"]" --include='*.js' --exclude='*.min.js' scripts 2>/dev/null | wc -l)" -eq 0
 
       # Push changes to `gh-pages` branch
       - name: Push to gh-pages branch
