@@ -826,19 +826,6 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 hit.ball = newSprite("sliderb.png", hit.x, hit.y, 0.5);
                 hit.ball.visible = false;
 
-                // Tail circle (desktop draws head + tail circles): plain
-                // combo disc + overlay at the final path end, no number or
-                // approach; dims with the body, not the head.
-                {
-                    const lastPt = hit.curve.curve[hit.curve.curve.length - 1];
-                    const atEnd = (hit.repeat % 2 == 1);
-                    const tx = atEnd ? lastPt.x : hit.x;
-                    const ty = atEnd ? lastPt.y : hit.y;
-                    hit.tailBase = newSprite("disc.png", tx, ty, 0.5);
-                    hit.tailBase.tint = combos[hit.combo % combos.length];
-                    hit.tailCircle = newSprite("hitcircleoverlay.png", tx, ty, 0.5);
-                }
-
                 // A slider contains a complete hit circle at its start, so we just make use of this
                 self.createHitCircle(hit);
 
@@ -1232,8 +1219,6 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                     hit.body.alpha = alpha;
                     for (let i = 0; i < hit.ticks.length; ++i)
                         hit.ticks[i].alpha = alpha;
-                    if (hit.tailBase) hit.tailBase.alpha = alpha;
-                    if (hit.tailCircle) hit.tailCircle.alpha = alpha;
                 }
                 let diff = hit.time - time; // milliseconds before hit.time
                 if (diff <= this.approachTime && diff > noteFullAppear) {
