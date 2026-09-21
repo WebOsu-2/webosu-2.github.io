@@ -146,6 +146,29 @@ test("headless: real map boots, clock finite, objects stream", async () => {
   pb.destroy();
 });
 
+test("headless: sliders get a tail circle at the final path end", async () => {
+  const { pb } = await bootTrack("Normal");
+  pb.start();
+  for (let f = 0; f < 30; f++) {
+    ctx.currentTime += 0.016;
+    pb.render(performance.now());
+    if (pb.ended) break;
+  }
+  const sliders = pb.hits.filter((h) => h && h.type === "slider" && h.body);
+  H.assert(sliders.length > 0, "map has sliders");
+  for (const h of sliders) {
+    H.assert(h.tailBase && h.tailCircle, "tail sprites exist");
+    const last = h.curve.curve[h.curve.curve.length - 1];
+    const ex = (h.repeat % 2 === 1) ? last.x : h.x;
+    const ey = (h.repeat % 2 === 1) ? last.y : h.y;
+    H.assert(Number.isFinite(h.tailBase.x) && Number.isFinite(h.tailBase.y), "tail finite");
+    H.assert(Math.abs(h.tailBase.x - ex) < 1e-9 && Math.abs(h.tailBase.y - ey) < 1e-9,
+      `tail at final end (got ${h.tailBase.x},${h.tailBase.y}, want ${ex},${ey})`);
+    H.assert(h.tailCircle.x === h.tailBase.x && h.tailCircle.y === h.tailBase.y, "tail overlay aligned");
+  }
+  pb.destroy();
+});
+
 test("headless: enabled video becomes a texture sprite, canvas untouched", async () => {
   global.window.app = { view: { style: {} }, renderer: { background: { color: 0x111111, alpha: 1 } } };
   global.HTMLVideoElement = global.HTMLVideoElement || class HTMLVideoElement {};
