@@ -3,9 +3,10 @@
 // The atlas sliderb.png center is ~12% opaque black: the clipped body
 // edge shows straight through the "thumb", reading as the slider being
 // cut off underneath it. Stable's ball is an opaque white core with
-// top-light shading (brighter crown, dimmer base), a thin gray rim and a
-// soft feathered edge, sized to the track width. Shading stays grayscale
-// (stable's ball is untinted white); tests pin the core near-white.
+// pronounced top-light shading (bright crown fading to a dim base), a
+// soft specular sheen upper-left, a defined gray rim and a feathered
+// edge, sized to the track width. Shading stays grayscale (stable's
+// ball is untinted white); tests pin the core near-white.
 //
 // Pure functions (no PIXI import) so tests can assert the profiles
 // headlessly. Buffers are premultiplied RGBA: declare alphaMode
@@ -22,22 +23,26 @@ export function makeSliderBallData() {
             const d = Math.hypot(x - CENTER, y - CENTER);
             let rgb, alpha;
             if (d <= 96) {
-                // opaque core: radial falloff (255 -> 237) plus top-light
-                // directional shading (crown up to +12, base down to -12),
-                // fading out at the rim so it meets the gray rim exactly
+                // opaque core: radial falloff (255 -> 237), pronounced
+                // top-light gradient (crown +20, base -20, fading out at
+                // the rim so it meets the gray rim exactly), plus a soft
+                // specular sheen upper-left
                 const u = d / 96;
-                const dir = ((CENTER - y) / 96) * (1 - u * u);
-                rgb = Math.round(Math.min(255, Math.max(0, 255 - 18 * u * u + 12 * dir)));
+                const dir = ((CENTER - y) / 96) * (1 - u * u) * 20;
+                const hx = x - (CENTER - 30), hy = y - (CENTER - 38);
+                const hd = Math.hypot(hx, hy) / 55;
+                const sheen = hd >= 1 ? 0 : 8 * (1 - hd * hd) * (1 - hd * hd);
+                rgb = Math.round(Math.min(255, Math.max(0, 255 - 18 * u * u + dir + sheen)));
                 alpha = 255;
             } else if (d <= 108) {
-                // thin gray rim (237 -> 150), still opaque
+                // defined gray rim (237 -> 140), still opaque
                 const u = (d - 96) / 12;
-                rgb = Math.round(237 - 87 * u);
+                rgb = Math.round(237 - 97 * u);
                 alpha = 255;
             } else if (d < 126) {
                 // soft feathered edge to transparent
                 const u = (d - 108) / 18;
-                rgb = 150;
+                rgb = 140;
                 alpha = Math.round(255 * (1 - u));
             } else {
                 rgb = 0;
