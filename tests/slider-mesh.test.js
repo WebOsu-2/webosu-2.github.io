@@ -90,8 +90,7 @@ test("slider-mesh: joint/end-cap fans carry joint t for snake clipping", () => {
   }
 });
 
-test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {
-  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
+test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   initMesh(m);
   m.sync(); // meshes build lazily once shared state exists
   H.assert(m.bodyMesh && m.capMesh, "both meshes built");
@@ -108,4 +107,113 @@ test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {
   H.eq(bu().dt, 0, "full slider");
   H.eq(m.capMesh.visible, false, "cap hidden when full");
   m.destroy();
+});
+
+test("slider-mesh: near-straight joints emit no sliver triangles", () => {
+  // A kink too small to see must not add join geometry: those slivers
+  // rasterize as streaks along the slider side. (The kinked line-slider
+  // resamples to one extra grid point via junction snapping, so compare
+  // post-grid fan verts — caps only — instead of raw index counts.)
+  const straight = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
+  const kinked = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0.05 }], 200, true);
+  const fanVerts = (m) => posOf(m).length / 4 - (1 + 5 * (m.curve.curve.length - 1));
+  H.eq(fanVerts(kinked), fanVerts(straight), "kink adds no fan verts");
+});
+
+test("slider-mesh: sharp kink has no double-drawn interior (single coverage)", () => {
+  // Butt quads of the two legs used to overlap in a full R x R square at
+  // a sharp kink (~23% of the kink-region body double-drawn, visible as
+  // alpha-doubled streaks); the inner span collapses to a fan around the
+  // kink miter. Measure double-drawn AREA (pair counts over-weight
+  // sub-pixel boundary slivers): rasterize the kink region and require
+  // <3% of covered pixels to be covered twice.
+  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 200, true);
+  checkGeometry(m, "kink");
+  const R = 50;
+  const pos = posOf(m);
+  const idx = m.bodyGeom.indexBuffer.data;
+  const P = (v) => ({ x: pos[4 * v], y: pos[4 * v + 1] });
+  const n = idx.length / 3;
+  const inside = (px, py, A, B, C) => {
+    // strict interior: shared tiling edges must not count as double-drawn
+    const d = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y);
+    if (Math.abs(d) < 1e-12) return false;
+    const l1 = ((B.y - C.y) * (px - C.x) + (C.x - B.x) * (py - C.y)) / d;
+    const l2 = ((C.y - A.y) * (px - C.x) + (A.x - C.x) * (py - C.y)) / d;
+    return l1 > 1e-7 && l2 > 1e-7 && l1 + l2 < 1 - 1e-7;
+  };
+  let single = 0, dbl = 0;
+  for (let gx = 100 - R - 5; gx <= 100 + R + 5; gx += 2) {
+    for (let gy = -R - 5; gy <= R + 5; gy += 2) {
+      let c = 0;
+      for (let t = 0; t < n; t++) {
+        if (inside(gx, gy, P(idx[3 * t]), P(idx[3 * t + 1]), P(idx[3 * t + 2]))) {
+          if (++c > 1) break;
+        }
+      }
+      if (c === 1) single++;
+      else if (c > 1) dbl++;
+    }
+  }
+  console.log(`    kink region: single=${single} dbl=${dbl}`);
+  H.assert(single > 100, "kink region has body pixels");
+  H.assert(dbl / (single + dbl) < 0.03, `double-drawn fraction ${(dbl / (single + dbl) * 100).toFixed(2)}% < 3%`);
+});
+
+function countUncovered(m, R) {
+  // every pixel within R-1 of the centerline must sit inside a triangle
+  // (guards against holes from span collapsing); 2px raster for speed.
+  const pos = posOf(m);
+  const idx = m.bodyGeom.indexBuffer.data;
+  const P = (v) => ({ x: pos[4 * v], y: pos[4 * v + 1] });
+  const n = idx.length / 3;
+  const inside = (px, py, A, B, C) => {
+    const d = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y);
+    if (Math.abs(d) < 1e-12) return false;
+    const l1 = ((B.y - C.y) * (px - C.x) + (C.x - B.x) * (py - C.y)) / d;
+    const l2 = ((C.y - A.y) * (px - C.x) + (A.x - C.x) * (py - C.y)) / d;
+    return l1 >= -1e-9 && l2 >= -1e-9 && l1 + l2 <= 1 + 1e-9;
+  };
+  const pts = m.curve.curve;
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const p of pts) {
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+  }
+  let missing = 0;
+  for (let gx = Math.floor(x0) - R; gx <= x1 + R; gx += 2) {
+    for (let gy = Math.floor(y0) - R; gy <= y1 + R; gy += 2) {
+      let dmin = 1e9;
+      for (let s = 1; s < pts.length; s++) {
+        const ax = pts[s - 1], bx = pts[s];
+        const dx = bx.x - ax.x, dy = bx.y - ax.y;
+        const l2 = dx * dx + dy * dy;
+        let u = l2 > 1e-12 ? ((gx - ax.x) * dx + (gy - ax.y) * dy) / l2 : 0;
+        u = Math.max(0, Math.min(1, u));
+        dmin = Math.min(dmin, Math.hypot(ax.x + u * dx - gx, ax.y + u * dy - gy));
+      }
+      if (dmin > R - 1) continue;
+      let covered = false;
+      for (let t = 0; t < n && !covered; t++)
+        if (inside(gx, gy, P(idx[3 * t]), P(idx[3 * t + 1]), P(idx[3 * t + 2]))) covered = true;
+      if (!covered) missing++;
+    }
+  }
+  return missing;
+}
+
+test("slider-mesh: kink and fold-back tip have no coverage holes", () => {
+  const kink = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 200, true);
+  H.eq(countUncovered(kink, 50), 0, "kink fully covered");
+  const fold = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: 0 }], 200, true);
+  checkGeometry(fold, "fold");
+  H.eq(countUncovered(fold, 50), 0, "fold tip fully covered");
+});
+
+test("slider-mesh: gradient texture uploads as premultiplied", () => {
+  // The gradient buffer is already premultiplied; v8 premultiplies
+  // "premultiply-alpha-on-upload" data again (dark/saturated sliders).
+  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+  initMesh(m);
+  H.eq(m.sliderTexture.source.alphaMode, "premultiplied-alpha", "declared truthfully");
 });
