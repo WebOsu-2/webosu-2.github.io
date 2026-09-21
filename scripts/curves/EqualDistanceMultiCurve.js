@@ -21,23 +21,46 @@ export default class EqualDistanceMultiCurve {
             this.curve = [{ x: hx, y: hy, t: 0 }, { x: hx, y: hy, t: 1 }];
             return;
         }
-        this.ncurve = Math.floor(this.hitObject.pixelLength / CURVE_POINTS_SEPERATION) + 1;
+        var pixelLength = this.hitObject.pixelLength; // This is the expected value of length
+        if (pixelLength < 0) console.error("osu curve: negative slider length");
         // number of segments, which have approximately same length
+        var gridCount = Math.floor(pixelLength / CURVE_POINTS_SEPERATION) + 1;
+        // Bezier-junction distances along the raw path. Path kinks live
+        // exactly here, so they become resample vertices: otherwise a
+        // resample chord straddles the kink and its wide quad overlaps
+        // neighboring quads (visible as streaks/doubled regions).
+        var junctions = [0];
+        var acc = 0;
+        for (var ci = 0; ci < curves.length; ++ci) {
+            acc += curves[ci].totalDistance || 0;
+            junctions.push(acc);
+        }
+        // sample distances: uniform grid plus exact kinks
+        var dists = [];
+        for (var i = 0; i <= gridCount; i++) dists.push(i * pixelLength / gridCount);
+        for (var ji = 0; ji < junctions.length; ++ji) {
+            var jd = junctions[ji];
+            if (jd < 0 || jd > pixelLength) continue;
+            var covered = false;
+            for (var di = 0; di < dists.length; ++di) {
+                if (Math.abs(dists[di] - jd) < 1e-6) { covered = true; break; }
+            }
+            if (!covered) dists.push(jd);
+        }
+        dists.sort(function (a, b) { return a - b; });
+
         this.curve = [];
-
-
         var distanceAt = 0; // accumulated length of new curve
         var curPoint = 0;
         var curCurveIndex = 0;
         var curCurve = curves[0]; // current pointer of raw curve array
         var lastCurve = curCurve.curve[0];
         var lastDistanceAt = 0;
+        var exhausted = false;
 
-        var pixelLength = this.hitObject.pixelLength; // This is the expected value of length
-        if (pixelLength < 0) console.error("osu curve: negative slider length");
-        for (var i = 0; i <= this.ncurve; i++) {
-            var prefDistance = i * pixelLength / this.ncurve; // expected current accumulated length
-            while (distanceAt < prefDistance) {
+        for (var si = 0; si < dists.length; ++si) {
+            var prefDistance = dists[si]; // expected current accumulated length
+            while (!exhausted && distanceAt < prefDistance) {
                 lastDistanceAt = distanceAt;
                 lastCurve = curCurve.curve[curPoint];
                 curPoint++;
@@ -54,60 +77,75 @@ export default class EqualDistanceMultiCurve {
                                 console.warn("[curve] L/B shorter than given", distanceAt / pixelLength);
                             }
                             // out of points even though the preferred distance hasn't been reached
+                            exhausted = true;
                             break;
                         }
                     }
                 }
-                distanceAt += curCurve.curveDistance[curPoint];
+                if (!exhausted) distanceAt += curCurve.curveDistance[curPoint];
             }
+            if (exhausted) break;
             var thisCurve = curCurve.curve[curPoint];
 
             // linear interpolate between lastCurve & thisCurve
             // this can always be done when lastCurve != thisCurve, since lastCurve is always available
             // lastDistanceAt <= prefDistance <= distanceAt
+            var t = prefDistance / pixelLength;
             if (lastCurve == thisCurve) {
                 // copy (don't alias the raw point): raw Bezier points have
                 // no `t`, and an undefined t becomes NaN in the slider
                 // vertex buffer, breaking snake in/out clipping.
-                this.curve[i] = { x: thisCurve.x, y: thisCurve.y, t: i / this.ncurve };
+                this.curve.push({ x: thisCurve.x, y: thisCurve.y, t: t });
             }
             else {
                 const EPSILON = 0.001;
                 if (Math.abs(distanceAt - lastDistanceAt) < EPSILON) {
                     // Fall back to a simple average along this segment or re-use the previous point.
-                    this.curve[i] = {
+                    this.curve.push({
                         x: (lastCurve.x + thisCurve.x) / 2,
                         y: (lastCurve.y + thisCurve.y) / 2,
-                        t: i / this.ncurve
-                    };
+                        t: t
+                    });
                 } else {
                     // For more robust interpolation, consider using Catmull-Rom interpolation if neighboring points exist.
                     // For simplicity, using linear interpolation as a base here.
-                    let t = (prefDistance - lastDistanceAt) / (distanceAt - lastDistanceAt);
-                    this.curve[i] = {
-                        x: Curve.lerp(lastCurve.x, thisCurve.x, t),
-                        y: Curve.lerp(lastCurve.y, thisCurve.y, t)
-                    };
-                    this.curve[i].t = i / this.ncurve;
+                    let u = (prefDistance - lastDistanceAt) / (distanceAt - lastDistanceAt);
+                    this.curve.push({
+                        x: Curve.lerp(lastCurve.x, thisCurve.x, u),
+                        y: Curve.lerp(lastCurve.y, thisCurve.y, u),
+                        t: t
+                    });
                 }
             }
         }
+        if (!this.curve.length) {
+            const hx = (this.hitObject && this.hitObject.x) || 0;
+            const hy = (this.hitObject && this.hitObject.y) || 0;
+            this.curve = [{ x: hx, y: hy, t: 0 }, { x: hx, y: hy, t: 1 }];
+        }
+        // segment count follows the actual points (kinks add a few)
+        this.ncurve = this.curve.length - 1;
     }
     pointAt(t) {
-
-        var indexF = t * this.ncurve;
-        var index = Math.floor(indexF);
-        if (index >= this.ncurve) { // overflowing or at exact endpoint
-            return this.curve[this.ncurve];
-        } else {
-            // linear interpolation between two points
-            let poi = this.curve[index];
-            let poi2 = this.curve[index + 1];
-            let t = indexF - index;
-            return {
-                x: Curve.lerp(poi.x, poi2.x, t),
-                y: Curve.lerp(poi.y, poi2.y, t)
-            };
+        // binary search on curve parameter (points are not uniformly
+        // spaced once kinks join the grid)
+        if (!(t > 0)) {
+            const p0 = this.curve[0];
+            return { x: p0.x, y: p0.y };
         }
+        const last = this.curve[this.curve.length - 1];
+        if (t >= 1) return { x: last.x, y: last.y };
+        let lo = 0, hi = this.curve.length - 1;
+        while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (this.curve[mid].t <= t) lo = mid; else hi = mid;
+        }
+        const a = this.curve[lo], b = this.curve[hi];
+        const span = b.t - a.t;
+        const u = span > 1e-12 ? (t - a.t) / span : 0;
+        return {
+            x: Curve.lerp(a.x, b.x, u),
+            y: Curve.lerp(a.y, b.y, u)
+        };
     }
 }

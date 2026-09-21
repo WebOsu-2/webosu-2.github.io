@@ -133,8 +133,9 @@ function newTextureData(colors, SliderTrackOverride, SliderBorder) {
 }
 
 const DIVIDES = 64;
-// Returns plain { verts, index } (no GL objects): same triangulation as
-// before, including degenerate-segment guards and inner joint bevels.
+// Returns plain { verts, index } (no GL objects): butt quad strip with
+// degenerate-segment guards, round outer joins, and miter-welded inner
+// joins (collapsed to a fan around the kink miter across overlapped spans).
 function curvePoints(curve0, radius) {
     let curve = [];
     for (let i = 0; i < curve0.length; ++i)
@@ -176,10 +177,6 @@ function curvePoints(curve0, radius) {
         vert.push(x + ox, y + oy, t, 1.0);
         vert.push(x - ox, y - oy, t, 1.0);
         vert.push(x, y, t, 0.0);
-
-        let n = 5 * i + 1;
-        index.push(n - 6, n - 5, n - 1, n - 5, n - 1, n - 3);
-        index.push(n - 6, n - 4, n - 1, n - 4, n - 1, n - 2);
     }
 
     function addArc(c, p1, p2, t = 0.0) {
@@ -203,6 +200,48 @@ function curvePoints(curve0, radius) {
 
     addArc(0, 1, 2, curve[0].t);
     addArc(5 * curve.length - 5, 5 * curve.length - 6, 5 * curve.length - 7, curve[curve.length - 1].t);
+    // Inner-side miter vertices per joint (-1 = none: endpoints, straight
+    // or degenerate joints keep butt sections, which tile exactly there).
+    // Miter-welding makes adjacent quads share full edges, so the inner
+    // side renders with exact single coverage instead of overlapping
+    // butt-section lenses (visible as streaks/doubled regions).
+    const miterL = new Array(curve.length).fill(-1);
+    const miterR = new Array(curve.length).fill(-1);
+    function miterAt(i, side) {
+        // Intersect the two inner edge lines at joint i. side +1 = left
+        // offsets, -1 = right offsets (matching the butt-vertex layout).
+        const ux1 = (curve[i].x - curve[i - 1].x);
+        const uy1 = (curve[i].y - curve[i - 1].y);
+        const ux2 = (curve[i + 1].x - curve[i].x);
+        const uy2 = (curve[i + 1].y - curve[i].y);
+        const l1 = Math.hypot(ux1, uy1);
+        const l2 = Math.hypot(ux2, uy2);
+        if (l1 < 1e-6 || l2 < 1e-6) return -1;
+        const d1x = ux1 / l1, d1y = uy1 / l1;
+        const d2x = ux2 / l2, d2y = uy2 / l2;
+        const n1x = -d1y * side, n1y = d1x * side;
+        const n2x = -d2y * side, n2y = d2x * side;
+        const cx = curve[i].x, cy = curve[i].y;
+        const p1x = cx + n1x * radius, p1y = cy + n1y * radius;
+        const p2x = cx + n2x * radius, p2y = cy + n2y * radius;
+        const denom = d1x * d2y - d1y * d2x;
+        let mx, my;
+        if (Math.abs(denom) < 1e-9) {
+            mx = (p1x + p2x) / 2;
+            my = (p1y + p2y) / 2;
+        } else {
+            const s = ((p2x - p1x) * d2y - (p2y - p1y) * d2x) / denom;
+            mx = p1x + s * d1x;
+            my = p1y + s * d1y;
+            const mdx = mx - cx, mdy = my - cy;
+            if (mdx * mdx + mdy * mdy > 9 * radius * radius) {
+                mx = (p1x + p2x) / 2;
+                my = (p1y + p2y) / 2;
+            }
+        }
+        vert.push(mx, my, curve[i].t, 1.0);
+        return vert.length / 4 - 1;
+    }
     for (let i = 1; i < curve.length - 1; ++i) {
         let dx1 = curve[i].x - curve[i - 1].x;
         let dy1 = curve[i].y - curve[i - 1].y;
@@ -213,28 +252,117 @@ function curvePoints(curve0, radius) {
         const l1 = Math.hypot(dx1, dy1);
         const l2 = Math.hypot(dx2, dy2);
         if (l1 < 1e-6 || l2 < 1e-6) continue;
+        const sin = (dx1 * dy2 - dx2 * dy1) / (l1 * l2);
+        // Fold-back (hairpin) tip: the path reverses, so neither side is
+        // "inner"; without a join the tip shows a semicircular notch past
+        // the joint. Emit a round fan over the tip half (CCW from the
+        // arrival right-butt to the arrival left-butt passes the tip).
+        const cos = (dx1 * dx2 + dy1 * dy2) / (l1 * l2);
+        if (Math.abs(sin) < 1e-3 && cos < -0.5) {
+            addArc(5 * i, 5 * i - 1, 5 * i - 2, curve[i].t);
+            continue;
+        }
         // Skip effectively-straight joints: the quads already tile cleanly,
         // and the sliver-thin fan/bevel triangles would rasterize as
         // streaks along the slider side.
-        const sin = (dx1 * dy2 - dx2 * dy1) / (l1 * l2);
         if (Math.abs(sin) < 1e-3) continue;
         let t = sin > 0 ? 1 : -1;
         // The joint's curve parameter goes on the fan: the shader clips
         // snake in/out per-fragment on it, so fans left at t=0 would pop
         // in ahead of the snake head and the slider would fall apart.
+        // Outer side keeps the round join (established look); the inner
+        // side is miter-welded (shared vertex, exact tiling, no overlap).
         if (t > 0) {
             // outer (right-side) round join
             addArc(5 * i, 5 * i - 1, 5 * i + 2, curve[i].t);
-            // inner (left-side) bevel: without this, tight curves show
-            // a wedge-shaped gap ("corner cut off") on the inside.
-            index.push(5 * i, 5 * i + 1, 5 * i - 2);
+            miterL[i] = miterAt(i, +1);
         }
         else if (t < 0) {
             addArc(5 * i, 5 * i + 1, 5 * i - 2, curve[i].t);
-            index.push(5 * i, 5 * i - 1, 5 * i + 2);
+            miterR[i] = miterAt(i, -1);
         }
-        // t == 0: straight joint, quads already meet cleanly; adding a
-        // zero-area arc would only risk z-fighting flicker.
+        // t == 0 unreachable (epsilon skip above); straight joints need no
+        // join geometry at all.
+    }
+    // Collapse concave-side edge verts that fall inside the stroke onto
+    // the kink miter. With dense resampling the concave-side overlap of a
+    // sharp kink spans many segments (an R x R square for a 90-degree
+    // kink), so trimming just the two adjacent quads still leaves the
+    // whole square double-drawn (brighter streaks). Joints whose butt edge
+    // lies within radius of the far leg collapse to the kink miter, turning
+    // the span into a fan around the miter that tiles exactly with the
+    // other leg's fan along the miter-to-joint edge. The far-leg search
+    // stays within a local window so distant self-intersections (spirals)
+    // are never merged. Small turns never trigger this (their edge verts
+    // stay within tolerance of radius), keeping gentle curves untouched.
+    function distPtSeg(px, py, ax, ay, bx, by) {
+        const dx = bx - ax, dy = by - ay;
+        const l2 = dx * dx + dy * dy;
+        let u = l2 > 1e-12 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
+        u = u < 0 ? 0 : (u > 1 ? 1 : u);
+        return Math.hypot(ax + u * dx - px, ay + u * dy - py);
+    }
+    const snapTol = 1.0;
+    const spanWin = Math.ceil(radius / 1.5) + 3;
+    for (let k = 1; k < curve.length - 1; ++k) {
+        const Mk = (miterL[k] !== -1) ? miterL[k] : miterR[k];
+        if (Mk === -1) continue;
+        const side = (miterL[k] !== -1) ? +1 : -1;
+        const arr = (side > 0) ? miterL : miterR;
+        for (let dir = -1; dir <= 1; dir += 2) {
+            for (let j = k + dir; j >= 1 && j <= curve.length - 2 &&
+                    Math.abs(j - k) <= spanWin; j += dir) {
+                // Another kink's own miter wins: keep it and stop the span.
+                if (arr[j] !== -1) break;
+                const b1 = (side > 0) ? 5 * j - 2 : 5 * j - 1;
+                const b2 = (side > 0) ? 5 * j + 1 : 5 * j + 2;
+                let inside = false;
+                for (let b = 0; b < 2 && !inside; ++b) {
+                    const px = vert[4 * (b ? b2 : b1)];
+                    const py = vert[4 * (b ? b2 : b1) + 1];
+                    if (dir < 0) {
+                        for (let s = k + 1; s < curve.length && s <= k + spanWin; ++s) {
+                            if (distPtSeg(px, py, curve[s - 1].x, curve[s - 1].y,
+                                    curve[s].x, curve[s].y) < radius - snapTol) {
+                                inside = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        for (let s = k; s >= 1 && s >= k - spanWin; --s) {
+                            if (distPtSeg(px, py, curve[s - 1].x, curve[s - 1].y,
+                                    curve[s].x, curve[s].y) < radius - snapTol) {
+                                inside = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!inside) break;
+                arr[j] = Mk;
+            }
+        }
+    }
+    // Quad strip between consecutive cross-sections. Each side resolves to
+    // the joint miter where one was computed, else the butt edge vertex:
+    // shared indices tile exactly, so nothing double-draws.
+    // Butt layout per segment k: L_prev=5k-4, R_prev=5k-3, L_curr=5k-2,
+    // R_curr=5k-1; centers C_0=0, C_k=5k.
+    // tri() drops degenerate triples from collapsed spans (a quad whose
+    // both edge verts snapped to the same miter contributes one fan
+    // triangle; the other triple is empty and must not be emitted).
+    function tri(a, b, c) {
+        if (a !== b && b !== c && c !== a) index.push(a, b, c);
+    }
+    for (let k = 1; k < curve.length; ++k) {
+        const cPrev = (k === 1) ? 0 : 5 * (k - 1);
+        const cCurr = 5 * k;
+        const lp = (miterL[k - 1] !== -1) ? miterL[k - 1] : 5 * k - 4;
+        const lc = (miterL[k] !== -1) ? miterL[k] : 5 * k - 2;
+        const rp = (miterR[k - 1] !== -1) ? miterR[k - 1] : 5 * k - 3;
+        const rc = (miterR[k] !== -1) ? miterR[k] : 5 * k - 1;
+        tri(cPrev, lp, cCurr); tri(lp, lc, cCurr);
+        tri(cPrev, rp, cCurr); tri(rp, rc, cCurr);
     }
     return { verts: vert, index: index };
 }
