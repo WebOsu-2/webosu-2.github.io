@@ -150,12 +150,13 @@ test("slider-mesh: growing tip is a rounded half-disk at the snake head", () => 
       if (along < -1e-9) throw new Error(`${label}: rim vert ${v} lies behind the clip line (would double-draw)`);
     }
   };
-  // straight slider, head at midpoint growing along +x
-  checkTip(m, 100, 0, 0.5, 1, "growing");
+  // straight slider, head at midpoint growing along +x (fan center tucked
+  // 1px back under the body clip edge so no hairline gap can open)
+  checkTip(m, 99, 0, 0.5, 1, "growing");
   // receding: head at midpoint, cap bulges back along -x
   m.startt = 0.5; m.endt = 1.0;
   m.sync();
-  checkTip(m, 100, 0, 0.5, -1, "receding");
+  checkTip(m, 101, 0, 0.5, -1, "receding");
   // degenerate curve still poses a finite tip (tangent fallback)
   const hit = { x: 100, y: 100, keyframes: [{ x: 100, y: 100 }], pixelLength: 50 };
   const dm = new SliderMesh(new LinearBezier(hit, false), R, 0);
