@@ -93,6 +93,11 @@ function makeTipGeometry() {
 
 // Fill the tip fan: center at the snake head, rim = forward semicircle of
 // radius r around it. forwardSign +1 grows along +t, -1 recedes from the head.
+// The fan tucks OVERLAP px back under the body's clip edge: abutting it
+// exactly leaves a hairline gap (the body's edge verts are trim/union
+// adjusted, never exactly on the tip chord), while a 1px overlap only
+// double-draws identical texture (invisible) instead of leaking background.
+const TIP_OVERLAP_PX = 1.0;
 function poseTip(geom, curve, tipT, r, forwardSign) {
     const C = curve.pointAt(tipT);
     const A = curve.pointAt(Math.max(0, tipT - 0.004));
@@ -101,14 +106,15 @@ function poseTip(geom, curve, tipT, r, forwardSign) {
     const fl = Math.hypot(fx, fy);
     if (fl < 1e-6) { fx = 1; fy = 0; } else { fx /= fl; fy /= fl; }
     const nx = -fy, ny = fx;
+    const cx = C.x - fx * TIP_OVERLAP_PX, cy = C.y - fy * TIP_OVERLAP_PX;
     const data = geom.getBuffer('position').data;
-    data[0] = C.x; data[1] = C.y; data[2] = tipT; data[3] = 0.0;
+    data[0] = cx; data[1] = cy; data[2] = tipT; data[3] = 0.0;
     for (let i = 0; i <= TIP_DIVS; ++i) {
         const a = -Math.PI / 2 + Math.PI * (i / TIP_DIVS);
         const ox = Math.cos(a), oy = Math.sin(a);
         const o = 4 * (1 + i);
-        data[o] = C.x + r * (ox * fx + oy * nx);
-        data[o + 1] = C.y + r * (ox * fy + oy * ny);
+        data[o] = cx + r * (ox * fx + oy * nx);
+        data[o + 1] = cy + r * (ox * fy + oy * ny);
         data[o + 2] = tipT;
         data[o + 3] = 1.0;
     }
