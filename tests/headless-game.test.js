@@ -57,6 +57,7 @@ function makeGame(over) {
     masterVolume: 0.6, effectVolume: 1, musicVolume: 1, beatmapHitsound: true,
     globalOffset: 0, backgroundVideo: false,
     easy: false, daycore: false, hardrock: false, nightcore: false, hidden: false,
+    doubletime: false, halftime: false,
     autoplay: false, autopilot: false, relax: false,
     hideNumbers: false, hideGreat: false, hideFollowPoints: false,
     mouseX: 256, mouseY: 192, mouse: null,
@@ -319,5 +320,32 @@ test("headless: legacy avi skips video, toasts, game plays as normal", async () 
     pb.destroy();
   } finally {
     delete global.showErrorToast;
+  }
+});
+
+test("headless: rate mods keep song-time chart, set playback rate", async () => {
+  // The song clock (audio position x rate) and the decoded chart are both
+  // in song time at any rate, so hit times must NOT be rescaled (scaling
+  // them once made daycore/nightcore unplayable). Each rate mod only sets
+  // the audio rate; rate mods never stack.
+  const { osu, track } = await bootTrack("Normal");
+  const raw0 = track.hitObjects[0].time;
+  H.assert(Number.isFinite(raw0), "fixture has timed objects");
+  const cases = [
+    [{}, 1.0],
+    [{ doubletime: true }, 1.5],
+    [{ nightcore: true }, 1.5],
+    [{ halftime: true }, 0.75],
+    [{ daycore: true }, 0.75],
+  ];
+  for (const [flags, rate] of cases) {
+    const game = makeGame(flags);
+    game.stage = new PIXI.Container();
+    const pb = new Playback(game, osu, track);
+    H.eq(pb.playbackRate, rate, `rate for ${JSON.stringify(flags)}`);
+    H.eq(pb.hits[0].time, raw0, `hits unscaled for ${JSON.stringify(flags)}`);
+    H.eq(pb.hits[pb.hits.length - 1].time,
+      track.hitObjects[track.hitObjects.length - 1].time, "tail unscaled");
+    pb.destroy();
   }
 });
