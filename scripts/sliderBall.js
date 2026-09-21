@@ -3,8 +3,9 @@
 // The atlas sliderb.png center is ~12% opaque black: the clipped body
 // edge shows straight through the "thumb", reading as the slider being
 // cut off underneath it. Stable's ball is an opaque white core with
-// subtle shading, a thin gray rim and a soft feathered edge, sized to
-// the track width.
+// top-light shading (brighter crown, dimmer base), a thin gray rim and a
+// soft feathered edge, sized to the track width. Shading stays grayscale
+// (stable's ball is untinted white); tests pin the core near-white.
 //
 // Pure functions (no PIXI import) so tests can assert the profiles
 // headlessly. Buffers are premultiplied RGBA: declare alphaMode
@@ -21,19 +22,22 @@ export function makeSliderBallData() {
             const d = Math.hypot(x - CENTER, y - CENTER);
             let rgb, alpha;
             if (d <= 96) {
-                // opaque core, barely-there radial shading (255 -> 237)
+                // opaque core: radial falloff (255 -> 237) plus top-light
+                // directional shading (crown up to +12, base down to -12),
+                // fading out at the rim so it meets the gray rim exactly
                 const u = d / 96;
-                rgb = Math.round(255 - 18 * u * u);
+                const dir = ((CENTER - y) / 96) * (1 - u * u);
+                rgb = Math.round(Math.min(255, Math.max(0, 255 - 18 * u * u + 12 * dir)));
                 alpha = 255;
             } else if (d <= 108) {
-                // thin gray rim (237 -> 160), still opaque
+                // thin gray rim (237 -> 150), still opaque
                 const u = (d - 96) / 12;
-                rgb = Math.round(237 - 77 * u);
+                rgb = Math.round(237 - 87 * u);
                 alpha = 255;
             } else if (d < 126) {
                 // soft feathered edge to transparent
                 const u = (d - 108) / 18;
-                rgb = 160;
+                rgb = 150;
                 alpha = Math.round(255 * (1 - u));
             } else {
                 rgb = 0;
