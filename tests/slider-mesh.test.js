@@ -94,7 +94,7 @@ test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  con
   initMesh(m);
   m.sync(); // meshes build lazily once shared state exists
   H.assert(m.bodyMesh, "body mesh built");
-  H.eq(m.capMesh, undefined, "no cap mesh (soft tip)");
+  H.assert(m.tipMesh, "rounded tip cap built");
   const bu = () => m.bodyShader.resources.sliderUniforms.uniforms;
   m.startt = 0.5; m.endt = 1.0; m.alpha = 0.8;
   m.sync();
@@ -102,22 +102,69 @@ test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  con
   H.eq(bu().ot, -0.5, "snake-in threshold");
   H.eq(bu().alpha, 0.8, "alpha pushed");
   H.eq(bu().texturepos, 0, "body uses combo row 0");
-  H.eq(bu().fadelen, 0.04, "tip fade on while snaking");
-  H.eq(bu().ct, 0.5, "fade threshold at tail");
+  H.eq(bu().fadelen, undefined, "no fade uniform (tip cap covers the cut)");
   H.eq(m.bodyMesh.visible, true, "body shown while snaking");
+  H.eq(m.tipMesh.visible, true, "rounded tip shown while receding");
   m.startt = 0.0; m.endt = 1.0;
   m.sync();
   H.eq(bu().dt, 0, "full slider");
-  H.eq(bu().fadelen, 0, "tip fade off when full");
-  H.eq(bu().ct, 0, "threshold unused when full");
   H.eq(m.bodyMesh.visible, true, "body shown when full");
+  H.eq(m.tipMesh.visible, false, "tip hidden when full");
   m.startt = 0.0; m.endt = 0.5; m.alpha = 0.8;
   m.sync();
   H.eq(bu().dt, 1, "snake-out clip flag");
   H.eq(bu().ot, 0.5, "snake-out threshold");
-  H.eq(bu().fadelen, 0.04, "tip fade on while growing");
-  H.eq(bu().ct, 0.5, "fade threshold at tip");
+  H.eq(m.tipMesh.visible, true, "rounded tip shown while growing");
   m.destroy();
+});
+
+test("slider-mesh: growing tip is a rounded half-disk at the snake head", () => {
+  // While growing, the tip fan must sit centered on the snake head with
+  // rim verts exactly one radius out, bulging forward only (no backward
+  // half that would double-draw the body), all tagged with the head's t
+  // so clipping keeps the whole fan.
+  const R = 50;
+  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
+  initMesh(m);
+  m.startt = 0.0; m.endt = 0.5;
+  m.sync();
+  const tipPos = (mesh) => mesh.tipGeom.attributes.position.buffer.data;
+  const checkTip = (mesh, hx, hy, ht, fwdX, label) => {
+    const pos = tipPos(mesh);
+    H.finiteArray(Array.from(pos), label + " tip positions");
+    const idx = Array.from(mesh.tipGeom.indexBuffer.data);
+    const divs = idx.length / 3;
+    H.eq(pos.length / 4, divs + 2, label + " fan vert count");
+    const cx = pos[0], cy = pos[1];
+    H.assert(Math.abs(cx - hx) < 1e-9 && Math.abs(cy - hy) < 1e-9,
+      `${label}: fan center (${cx}, ${cy}) at snake head (${hx}, ${hy})`);
+    H.eq(pos[2], ht, label + " center t");
+    H.eq(pos[3], 0.0, label + " center dist");
+    for (let v = 1; v < pos.length / 4; v++) {
+      const d = Math.hypot(pos[4 * v] - cx, pos[4 * v + 1] - cy);
+      // float32 buffer storage: allow sub-pixel slop (invisible)
+      if (Math.abs(d - R) > 1e-3) throw new Error(`${label}: rim vert ${v} at radius ${d} (want ${R})`);
+      H.eq(pos[4 * v + 2], ht, `${label}: rim t`);
+      H.eq(pos[4 * v + 3], 1.0, `${label}: rim dist`);
+      const along = (pos[4 * v] - cx) * fwdX;
+      if (along < -1e-9) throw new Error(`${label}: rim vert ${v} lies behind the clip line (would double-draw)`);
+    }
+  };
+  // straight slider, head at midpoint growing along +x
+  checkTip(m, 100, 0, 0.5, 1, "growing");
+  // receding: head at midpoint, cap bulges back along -x
+  m.startt = 0.5; m.endt = 1.0;
+  m.sync();
+  checkTip(m, 100, 0, 0.5, -1, "receding");
+  // degenerate curve still poses a finite tip (tangent fallback)
+  const hit = { x: 100, y: 100, keyframes: [{ x: 100, y: 100 }], pixelLength: 50 };
+  const dm = new SliderMesh(new LinearBezier(hit, false), R, 0);
+  initMesh(dm);
+  dm.startt = 0.0; dm.endt = 0.5;
+  dm.sync();
+  H.finiteArray(Array.from(tipPos(dm)), "degenerate tip positions");
+  H.eq(dm.tipMesh.visible, true, "degenerate tip shown");
+  m.destroy(); dm.destroy();
 });
 
 test("slider-mesh: near-straight joints emit no sliver triangles", () => {
