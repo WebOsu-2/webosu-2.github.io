@@ -1,8 +1,9 @@
 // Regression battery: sharp / non-natural slider corners across turn
-// directions and curve types. Every shape must render with no holes, no
-// stray verts, single coverage (exact union) and no stacked overdraw:
-// the join pipeline (miter limit + bevel, guarded snap, subtractive
-// union) keeps even acute spikes, folds and loops exact.
+// directions and curve types. Every shape must produce finite, in-range
+// capsule geometry with no holes: every pixel within radius-1 of the
+// centerline falls inside at least one segment quad, where the per-pass
+// coverage field is computed (the GPU MAX over those quads is exact by
+// construction), and no rendered corner strays from the path.
 "use strict";
 const H = require("./helpers");
 
@@ -22,29 +23,36 @@ function bez(pts, pixelLength) {
   return new SliderMesh(new Bezier2(hit), R, 0);
 }
 function grid(m) {
-  // sample coverage over the curve bbox (+R), 2px raster
-  const pos = m.bodyGeom.attributes.position.buffer.data;
-  const idx = m.bodyGeom.indexBuffer.data;
-  const P = (v) => ({ x: pos[4 * v], y: pos[4 * v + 1] });
-  const n = idx.length / 3;
+  // sample coverage over the curve bbox (+R), 2px raster (stride-2
+  // prepass geometry: position/segA/segB, one quad per segment)
+  const pos = m.prepassGeom.attributes.position.buffer.data;
+  const idx = Array.from(m.prepassGeom.indexBuffer.data);
+  const P = (v) => ({ x: pos[2 * v], y: pos[2 * v + 1] });
+  const tris = [];
+  for (let t = 0; t < idx.length / 3; t++) {
+    const [a, b, c] = [idx[3 * t], idx[3 * t + 1], idx[3 * t + 2]];
+    if (a === 0 && b === 0 && c === 0) continue; // zeroed tail slot
+    const nv = pos.length / 2;
+    if (!(a < nv && b < nv && c < nv)) throw new Error(`index out of range [0, ${nv})`);
+    tris.push([a, b, c]);
+  }
   const pts = m.curve.curve;
   let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
   for (const p of pts) {
     x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
     y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
   }
-  const inside = (px, py, A, B, C, strict) => {
+  const inside = (px, py, A, B, C) => {
     const d = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y);
     if (Math.abs(d) < 1e-12) return false;
     const l1 = ((B.y - C.y) * (px - C.x) + (C.x - B.x) * (py - C.y)) / d;
     const l2 = ((C.y - A.y) * (px - C.x) + (A.x - C.x) * (py - C.y)) / d;
-    return strict ? (l1 > 1e-7 && l2 > 1e-7 && l1 + l2 < 1 - 1e-7)
-                  : (l1 >= -1e-7 && l2 >= -1e-7 && l1 + l2 <= 1 + 1e-7);
+    return l1 >= -1e-7 && l2 >= -1e-7 && l1 + l2 <= 1 + 1e-7;
   };
-  let holes = 0, single = 0, dbl = 0, maxDepth = 0;
+  let holes = 0;
   for (let gx = Math.floor(x0) - R; gx <= x1 + R; gx += 2) {
     for (let gy = Math.floor(y0) - R; gy <= y1 + R; gy += 2) {
-      // near-centerline pixels must be covered (holes); all pixels count depth
+      // near-centerline pixels must be covered (holes)
       let dmin = 1e9;
       for (let s = 1; s < pts.length; s++) {
         const ax = pts[s - 1], bx = pts[s];
@@ -54,38 +62,27 @@ function grid(m) {
         u = Math.max(0, Math.min(1, u));
         dmin = Math.min(dmin, Math.hypot(ax.x + u * dx - gx, ax.y + u * dy - gy));
       }
-      let c = 0;
-      for (let t = 0; t < n; t++) {
-        if (inside(gx, gy, P(idx[3 * t]), P(idx[3 * t + 1]), P(idx[3 * t + 2]), true)) {
-          if (++c > 4) break;
-        }
-      }
-      if (c > maxDepth) maxDepth = c;
       if (dmin > R - 1) continue;
-      if (c === 0) {
-        // confirm with inclusive test before calling it a hole
-        let cov = false;
-        for (let t = 0; t < n && !cov; t++)
-          if (inside(gx, gy, P(idx[3 * t]), P(idx[3 * t + 1]), P(idx[3 * t + 2]), false)) cov = true;
-        if (!cov) holes++;
-        else single++;
-      }
-      else if (c === 1) single++;
-      else dbl++;
+      let covered = false;
+      for (let t = 0; t < tris.length && !covered; t++)
+        if (inside(gx, gy, P(tris[t][0]), P(tris[t][1]), P(tris[t][2]))) covered = true;
+      if (!covered) holes++;
     }
   }
-  // stray verts (rendered only: unreferenced construction leftovers
-  // never rasterize): farther than R+3 from every centerline point
-  const vpos = m.bodyGeom.attributes.position.buffer.data;
-  const usedIdx = new Set(Array.from(m.bodyGeom.indexBuffer.data));
+  // stray verts (rendered only: unreferenced leftovers never rasterize):
+  // every quad corner sits exactly R*sqrt(2) from its segment endpoint,
+  // so anything farther than that + slack is a bug
+  const usedIdx = new Set();
+  for (const [a, b, c] of tris) { usedIdx.add(a); usedIdx.add(b); usedIdx.add(c); }
+  const strayLimit = Math.SQRT2 * R + 3;
   let stray = 0;
-  for (let v = 0; v < vpos.length / 4; v++) {
+  for (let v = 0; v < pos.length / 2; v++) {
     if (!usedIdx.has(v)) continue;
     let dmin = 1e9;
-    for (const p of pts) dmin = Math.min(dmin, Math.hypot(vpos[4 * v] - p.x, vpos[4 * v + 1] - p.y));
-    if (dmin > R + 3) stray++;
+    for (const p of pts) dmin = Math.min(dmin, Math.hypot(pos[2 * v] - p.x, pos[2 * v + 1] - p.y));
+    if (dmin > strayLimit) stray++;
   }
-  return { holes, single, dbl, maxDepth, stray };
+  return { holes, stray, tris: tris.length };
 }
 
 const SHAPES = [
@@ -107,25 +104,20 @@ const SHAPES = [
   ["bez-S", () => bez([{ x: 0, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 80 }, { x: 120, y: 80 }], 190)],
 ];
 
-test("shapes: sharp corners render exactly (no holes, strays or doubles)", () => {
+test("shapes: capsule quads render exactly (no holes or strays)", () => {
   const failures = [];
   for (const [name, build] of SHAPES) {
     const m = build();
-    const pos = m.bodyGeom.attributes.position.buffer.data;
+    const pos = m.prepassGeom.attributes.position.buffer.data;
     try {
       H.finiteArray(Array.from(pos), name + " finite");
-      const idx = Array.from(m.bodyGeom.indexBuffer.data);
-      const nv = pos.length / 4;
-      for (const ix of idx) {
-        if (!(ix >= 0 && ix < nv)) throw new Error(`${name}: index out of range`);
-      }
+      H.finiteArray(Array.from(m.prepassGeom.attributes.segA.buffer.data), name + " segA finite");
+      H.finiteArray(Array.from(m.prepassGeom.attributes.segB.buffer.data), name + " segB finite");
       const g = grid(m);
-      const frac = g.dbl / Math.max(1, g.single + g.dbl);
-      console.log(`    ${name}: holes=${g.holes} dbl=${g.dbl}(${(frac * 100).toFixed(1)}%) maxDepth=${g.maxDepth} stray=${g.stray}`);
+      console.log(`    ${name}: holes=${g.holes} stray=${g.stray} tris=${g.tris}`);
       if (g.holes !== 0) failures.push(`${name}: holes=${g.holes}`);
       if (g.stray !== 0) failures.push(`${name}: stray=${g.stray}`);
-      if (frac >= 0.02) failures.push(`${name}: dbl=${(frac * 100).toFixed(1)}%`);
-      if (g.maxDepth > 2) failures.push(`${name}: maxDepth=${g.maxDepth}`);
+      if (g.tris === 0) failures.push(`${name}: no geometry`);
     } finally {
       m.destroy();
     }

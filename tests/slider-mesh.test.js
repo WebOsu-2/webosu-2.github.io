@@ -1,6 +1,9 @@
-// Unit tests: SliderMesh geometry + v8 mesh wiring, using the real
-// PixiJS bundle headlessly (geometry/uniforms need no GL context).
-// GlProgram construction probes document, so a minimal stub is installed.
+// Unit tests: SliderMesh two-pass geometry + v8 mesh wiring, using the
+// real PixiJS bundle headlessly (geometry/uniforms need no GL context).
+// The shape lives in the coverage prepass: capsule quads with stride-6
+// attributes (position/segA/segB, vec2 each) rendered with MAX blending;
+// the composite only maps coverage through the gradient LUT. GlProgram
+// construction probes document, so a minimal stub is installed.
 "use strict";
 const H = require("./helpers");
 
@@ -9,114 +12,159 @@ global._ = global._ || H.ensureUnderscore();
 const SliderMesh = H.loadModule("scripts/SliderMesh.js").default;
 const LinearBezier = H.loadModule("scripts/curves/LinearBezier.js").default;
 
+const R = 50;
+
 function meshFromPoints(pts, pixelLength, line) {
   const hit = { x: pts[0].x, y: pts[0].y, keyframes: pts.slice(1), pixelLength: pixelLength || 200 };
   const curve = new LinearBezier(hit, !!line);
-  return new SliderMesh(curve, 50, 0);
+  return new SliderMesh(curve, R, 0);
 }
-function posOf(mesh) {
-  return mesh.bodyGeom.attributes.position.buffer.data;
+function pre(m) {
+  return {
+    pos: m.prepassGeom.attributes.position.buffer.data,
+    segA: m.prepassGeom.attributes.segA.buffer.data,
+    segB: m.prepassGeom.attributes.segB.buffer.data,
+    idx: Array.from(m.prepassGeom.indexBuffer.data),
+  };
+}
+// Vertices referenced by real triangles (unused index slots are zeroed
+// and degenerate to (0,0,0) triangles, which never rasterize).
+function usedVerts(m) {
+  const g = pre(m);
+  const verts = g.pos.length / 2;
+  const used = new Set();
+  for (let i = 0; i < g.idx.length; i += 3) {
+    const [a, b, c] = [g.idx[i], g.idx[i + 1], g.idx[i + 2]];
+    if (a === 0 && b === 0 && c === 0) continue;
+    for (const v of [a, b, c]) {
+      if (!(v >= 0 && v < verts)) throw new Error(`index ${v} out of range [0, ${verts})`);
+      used.add(v);
+    }
+  }
+  return { ...g, used };
 }
 function checkGeometry(m, label) {
-  const pos = posOf(m);
+  const { pos, segA, segB } = pre(m);
   H.finiteArray(Array.from(pos), label + " positions");
-  const idx = Array.from(m.bodyGeom.indexBuffer.data);
-  H.assert(idx.length > 0, label + " has indices");
-  const verts = pos.length / 4;
-  for (const ix of idx) {
-    if (!(ix >= 0 && ix < verts)) throw new Error(`${label}: index ${ix} out of range [0, ${verts})`);
-  }
-  return { verts, tris: idx.length / 3 };
+  H.finiteArray(Array.from(segA), label + " segA");
+  H.finiteArray(Array.from(segB), label + " segB");
+  H.assert(pos.length === segA.length && pos.length === segB.length, label + " attributes share a stride");
+  const { used } = usedVerts(m);
+  H.assert(used.size >= 4 && used.size % 4 === 0, label + " emits whole quads");
+  return { verts: pos.length / 2, quads: used.size / 4 };
 }
 function initMesh(m) {
-  m.initialize([0xff0000, 0x00ff00], 50, { dx: 0.01, dy: -0.01, ox: 0, oy: 0 });
+  m.initialize([0xff0000, 0x00ff00], R, { dx: 0.01, dy: -0.01, ox: 0, oy: 0 });
 }
 
 test("slider-mesh: straight slider geometry is finite and indexed", () => {
   const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   const s = checkGeometry(m, "straight");
-  console.log(`    straight: ${s.verts} verts, ${s.tris} tris`);
+  console.log(`    straight: ${s.verts} verts, ${s.quads} quads`);
 });
 
 test("slider-mesh: degenerate (coincident) curve cannot produce NaN", () => {
   const hit = { x: 100, y: 100, keyframes: [{ x: 100, y: 100 }], pixelLength: 50 };
   const curve = new LinearBezier(hit, false);
-  const m = new SliderMesh(curve, 50, 0);
+  const m = new SliderMesh(curve, R, 0);
   checkGeometry(m, "degenerate");
 });
 
 test("slider-mesh: zero-length middle segment cannot produce NaN", () => {
-  // duplicate consecutive point => zero-length segment (old code: NaN normals)
+  // duplicate consecutive point => zero-length segment (deduped before
+  // any direction math, so no NaN normals can be produced)
   const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   checkGeometry(m, "zero-seg");
 });
 
-test("slider-mesh: sharp corner gets joint fill (no missing wedge)", () => {
-  const straight = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
-  // bent path smooths to ~162px; size pixelLength to match so the test
-  // exercises joints without tripping length warnings
-  const bent = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 162);
-  checkGeometry(straight, "straight");
-  const b = checkGeometry(bent, "bent");
-  const sTris = straight.bodyGeom.indexBuffer.data.length;
-  H.assert(
-    bent.bodyGeom.indexBuffer.data.length > sTris,
-    `bent corner should add join triangles (bent=${bent.bodyGeom.indexBuffer.data.length} vs straight=${sTris})`
-  );
-  console.log(`    bent: ${b.verts} verts, ${b.tris} tris`);
-});
-
-test("slider-mesh: joint/end-cap fans carry joint t for snake clipping", () => {
-  // The vertex shader clips snake in/out per-fragment on position[2] (the
-  // curve parameter t): with snake-in at `endt`, fragments with t > endt
-  // are pushed beyond the far plane. So every vertex with t≈0 must sit
-  // within radius of the curve head (the head cap); anywhere else it pops
-  // in ahead of the snake and the slider visibly falls apart on curves.
-  // NOTE: line=true (L-type slider) keeps the 90° corner sharp, which is
-  // what grows multi-vertex joint fans; smoothed beziers barely turn per
-  // joint and would not exercise this path.
-  const H0 = { x: 0, y: 0 };
-  const curve = new LinearBezier({ x: H0.x, y: H0.y, keyframes: [{ x: 100, y: 0 }, { x: 100, y: 100 }], pixelLength: 200 }, true);
-  const m = new SliderMesh(curve, 50, 0);
-  const pos = posOf(m);
-  const R = 50;
-  for (let v = 0; v < pos.length / 4; v++) {
-    const t = pos[4 * v + 2];
-    if (Math.abs(t) < 1e-9) {
-      const d = Math.hypot(pos[4 * v] - H0.x, pos[4 * v + 1] - H0.y);
-      // tolerance well below any real floater (pre-fix: 114px on R=50)
-      if (d > R + 1e-3) throw new Error(`vertex ${v} has t=0 but sits ${d.toFixed(1)}px from the head (snake glitch)`);
-    }
+test("slider-mesh: quads are their segment rectangles extended by radius", () => {
+  // Every corner must be exactly one of {end -/+ dir*R +/- normal*R}: the
+  // extension along the direction is what leaves room for the round caps
+  // (a butt-ended quad would cut the cap flat), and the normal offset of
+  // radius is the stroke half-width.
+  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
+  const { used, pos, segA, segB } = usedVerts(m);
+  for (const v of used) {
+    const p0x = segA[2 * v], p0y = segA[2 * v + 1];
+    const p1x = segB[2 * v], p1y = segB[2 * v + 1];
+    const dx = p1x - p0x, dy = p1y - p0y;
+    const len = Math.hypot(dx, dy);
+    H.assert(len > 1e-6, "quad segment endpoints distinct");
+    const ux = dx / len * R, uy = dy / len * R;
+    const nx = -uy, ny = ux;
+    const expected = [
+      [p0x - ux - nx, p0y - uy - ny], [p0x - ux + nx, p0y - uy + ny],
+      [p1x + ux - nx, p1y + uy - ny], [p1x + ux + nx, p1y + uy + ny],
+    ];
+    let best = Infinity;
+    for (const [ex, ey] of expected)
+      best = Math.min(best, Math.hypot(pos[2 * v] - ex, pos[2 * v + 1] - ey));
+    if (best > 1e-3)
+      throw new Error(`vertex ${v} at (${pos[2 * v]}, ${pos[2 * v + 1]}) is ${best.toFixed(2)}px off the radius-extended corner set`);
   }
 });
 
-test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
+test("slider-mesh: initialize builds meshes, sync drives uniforms", () => {
+  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   initMesh(m);
   m.sync(); // meshes build lazily once shared state exists
-  H.assert(m.bodyMesh, "body mesh built");
-  H.assert(m.snakeMesh, "snake mesh built");
-  const bu = () => m.bodyShader.resources.sliderUniforms.uniforms;
+  H.assert(m.mesh, "composite mesh built");
+  H.assert(m.prepassMesh, "prepass mesh built");
+  H.eq(m.prepassMesh.blendMode, "max", "coverage pass blends with equation MAX");
+  H.eq(m.prepassMesh.parent, m.prepassRoot, "prepass hangs off its own root");
+  H.assert(!m.children.includes(m.prepassMesh), "prepass never reaches the stage graph");
+  H.eq(m.mesh.parent, m, "composite is the visible child");
+  H.assert(m.rt, "coverage texture created headlessly");
+  H.eq(m.rt.width, m.rtW, "texture sized to its descriptor");
+  H.eq(m.rtDirty, true, "coverage render deferred without a renderer (headless no-op)");
+  H.eq(m.meshShader.resources.uCoverage, m.rt.source, "coverage texture bound to uCoverage");
+  H.eq(m.meshShader.resources.uSampler2, m.sliderTexture.source, "gradient LUT bound to uSampler2");
+  const bu = () => m.meshShader.resources.sliderUniforms.uniforms;
   m.startt = 0.5; m.endt = 1.0; m.alpha = 0.8;
   m.sync();
-  H.eq(bu().dt, 0, "body always full-draw (shape comes from geometry)");
-  H.eq(bu().ot, 1, "no shader clip");
   H.eq(bu().alpha, 0.8, "alpha pushed");
-  H.eq(bu().texturepos, 0, "body uses combo row 0");
-  H.eq(bu().fadelen, undefined, "no fade uniform (seamless by construction)");
-  H.eq(m.bodyMesh.visible, false, "body hidden while snaking");
-  H.eq(m.snakeMesh.visible, true, "partial path shown while receding");
+  H.eq(bu().texturepos, 0.25, "texel center of combo row 0 (2 colors)");
+  H.eq(bu().dx, 0.01, "transform pushed");
+  H.eq(bu().dy, -0.01, "y-flip pushed");
+  H.eq(bu().fadelen, undefined, "no fade uniform (fade applied at composite)");
+  H.eq(m.mesh.visible, true, "partial path shown while receding");
+  H.eq(m.geoKey, "0.5,1", "geometry keyed by range");
   m.startt = 0.0; m.endt = 1.0;
   m.sync();
-  H.eq(m.bodyMesh.visible, true, "body shown when full");
-  H.eq(m.snakeMesh.visible, false, "snake hidden when full");
-  m.startt = 0.0; m.endt = 0.5; m.alpha = 0.8;
+  H.eq(m.mesh.visible, true, "shown when full");
+  H.eq(m.geoKey, "full", "full path geometry");
+  m.startt = 0.0; m.endt = 0.5;
   m.sync();
-  H.eq(m.bodyMesh.visible, false, "body hidden while growing");
-  H.eq(m.snakeMesh.visible, true, "partial path shown while growing");
+  H.eq(m.mesh.visible, true, "partial path shown while growing");
+  H.eq(m.geoKey, "0,0.5", "grow key");
   m.startt = 0.0; m.endt = 0.0;
   m.sync();
-  H.eq(m.bodyMesh.visible, false, "body hidden when empty");
-  H.eq(m.snakeMesh.visible, false, "snake hidden when empty");
+  H.eq(m.mesh.visible, false, "hidden when empty");
+  m.destroy();
+  H.eq(m.destroyed, true, "destroy completes");
+});
+
+test("slider-mesh: combo tint samples its own LUT row center", () => {
+  const m = new SliderMesh(meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }]).curve, R, 1);
+  initMesh(m);
+  m.sync();
+  H.eq(m.meshShader.resources.sliderUniforms.uniforms.texturepos, 0.75,
+    "row 1 of 2 at its texel center (linear filtering must not bleed rows)");
+  m.destroy();
+});
+
+test("slider-mesh: prepass projection maps path bounds onto NDC [-1,1]", () => {
+  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
+  initMesh(m);
+  m.sync();
+  const u = m.prepassShader.resources.prepassUniforms.uniforms;
+  H.eq(u.radius, R, "radius uniform");
+  const b = m.bounds;
+  const near = (a, e) => Math.abs(a - e) <= 1e-6;
+  H.assert(near(u.scaleX * b.x0 + u.offX, -1), "bounds x0 -> ndc -1");
+  H.assert(near(u.scaleX * b.x1 + u.offX, 1), "bounds x1 -> ndc +1");
+  H.assert(near(u.scaleY * b.y0 + u.offY, -1), "bounds y0 -> texture row 0");
+  H.assert(near(u.scaleY * b.y1 + u.offY, 1), "bounds y1 -> texture row max");
   m.destroy();
 });
 
@@ -136,134 +184,94 @@ test("slider-mesh: partialPoints truncates with exact head interpolation", () =>
   H.eq(partialPoints([], 0, 0.5).length, 0, "empty in, empty out");
 });
 
-test("slider-mesh: snake rebuild is a finite partial path with a round head", () => {
-  // osu backend: while snaking, the mesh IS the truncated path (round cap
-  // at the head), so no clip edge or second mesh can ever seam or gap.
-  const R = 50;
+test("slider-mesh: snake rebuild is a finite partial path with cap room", () => {
+  // While snaking, the prepass geometry IS the truncated path: quads
+  // reach exactly one radius past both ends, so the moving head/tail
+  // cap of the distance field can draw full circles (no flat cut).
   const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
   initMesh(m);
-  const usedVerts = (mesh) => {
-    const idx = Array.from(mesh.snakeGeom.indexBuffer.data);
-    const pos = mesh.snakeGeom.attributes.position.buffer.data;
-    const used = new Set();
-    for (let i = 0; i < idx.length; i += 3) {
-      const [a, b, c] = [idx[i], idx[i + 1], idx[i + 2]];
-      if (a === 0 && b === 0 && c === 0) continue; // unused slot
-      for (const v of [a, b, c]) {
-        if (!(v >= 0 && v < mesh.snakeVertCap)) throw new Error(`snake index ${v} out of range`);
-        used.add(v);
-      }
-    }
-    return { used, pos };
-  };
   m.startt = 0.0; m.endt = 0.5;
   m.sync();
-  H.eq(m.lastSnake, "0,0.5", "snake contents keyed by head");
-  m.sync();
-  H.eq(m.lastSnake, "0,0.5", "no rebuild without head movement");
+  H.eq(m.geoKey, "0,0.5", "geometry keyed by head");
+  H.eq(m.mesh.visible, true, "partial path shown while growing");
+  H.eq(m.rebuildGeometry(0.0, 0.5), false, "no rebuild without head movement");
   {
     const { used, pos } = usedVerts(m);
-    H.assert(used.size > 10, "snake has geometry");
+    H.assert(used.size >= 8, "partial path has geometry");
+    let minx = Infinity, maxx = -Infinity;
     for (const v of used) {
-      for (let k = 0; k < 4; ++k)
-        if (!Number.isFinite(pos[4 * v + k])) throw new Error(`snake vert ${v} not finite`);
-      // partial path x in [0,100], head at (100,0): everything within R
-      if (pos[4 * v] < -R - 1 || pos[4 * v] > 100 + R + 1 ||
-          Math.abs(pos[4 * v + 1]) > R + 1)
+      for (let k = 0; k < 2; ++k)
+        if (!Number.isFinite(pos[2 * v + k])) throw new Error(`snake vert ${v} not finite`);
+      if (pos[2 * v] < -R - 1 || pos[2 * v] > 100 + R + 1 ||
+          Math.abs(pos[2 * v + 1]) > R + 1)
         throw new Error(`snake vert ${v} outside partial path`);
+      minx = Math.min(minx, pos[2 * v]);
+      maxx = Math.max(maxx, pos[2 * v]);
     }
-    // round head: cap nose one radius past the head point (100, 0)
-    let nose = false;
-    for (const v of used)
-      if (Math.abs(pos[4 * v] - (100 + R)) < 2 && Math.abs(pos[4 * v + 1]) < 2) nose = true;
-    H.assert(nose, "round cap nose at head + R (no flat cut)");
+    H.assert(Math.abs(maxx - (100 + R)) < 0.1, `nose at head + R (got ${maxx.toFixed(2)})`);
+    H.assert(Math.abs(minx - (-R)) < 0.1, `tail cap at path start - R (got ${minx.toFixed(2)})`);
   }
   // receding side rebuilds from the other end
   m.startt = 0.5; m.endt = 1.0;
   m.sync();
-  H.eq(m.snakeMesh.visible, true, "snake shown while receding");
-  H.eq(m.lastSnake, "0.5,1", "recede key");
+  H.eq(m.mesh.visible, true, "shown while receding");
+  H.eq(m.geoKey, "0.5,1", "recede key");
   {
     const { used, pos } = usedVerts(m);
-    let nose = false;
-    for (const v of used)
-      if (Math.abs(pos[4 * v] - (100 - R)) < 2 && Math.abs(pos[4 * v + 1]) < 2) nose = true;
-    H.assert(nose, "round cap nose at recede head - R");
+    let minx = Infinity, maxx = -Infinity;
+    for (const v of used) {
+      for (let k = 0; k < 2; ++k)
+        if (!Number.isFinite(pos[2 * v + k])) throw new Error(`snake vert ${v} not finite`);
+      minx = Math.min(minx, pos[2 * v]);
+      maxx = Math.max(maxx, pos[2 * v]);
+    }
+    H.assert(Math.abs(minx - (100 - R)) < 0.1, `recede head cap at head - R (got ${minx.toFixed(2)})`);
+    H.assert(Math.abs(maxx - (200 + R)) < 0.1, `far end keeps its cap (got ${maxx.toFixed(2)})`);
   }
-  // degenerate curve still rebuilds finite (tangent/cap fallbacks)
+  // degenerate curve still rebuilds finite (fallback segment)
   const hit = { x: 100, y: 100, keyframes: [{ x: 100, y: 100 }], pixelLength: 50 };
   const dm = new SliderMesh(new LinearBezier(hit, false), R, 0);
   initMesh(dm);
   dm.startt = 0.0; dm.endt = 0.5;
   dm.sync();
-  H.eq(dm.snakeMesh.visible, true, "degenerate snake shown");
-  {
-    const { used, pos } = usedVerts(dm);
-    for (const v of used)
-      for (let k = 0; k < 4; ++k)
-        if (!Number.isFinite(pos[4 * v + k])) throw new Error(`degenerate snake vert ${v} not finite`);
-  }
+  H.eq(dm.mesh.visible, true, "degenerate partial shown");
+  const dv = usedVerts(dm);
+  H.assert(dv.used.size >= 4, "degenerate partial emits fallback quad");
+  for (const v of dv.used)
+    for (let k = 0; k < 2; ++k)
+      if (!Number.isFinite(dv.pos[2 * v + k])) throw new Error(`degenerate vert ${v} not finite`);
   m.destroy(); dm.destroy();
 });
 
-test("slider-mesh: near-straight joints emit no sliver triangles", () => {
-  // A kink too small to see must not add join geometry: those slivers
-  // rasterize as streaks along the slider side. (The kinked line-slider
-  // resamples to one extra grid point via junction snapping, so compare
-  // post-grid fan verts — caps only — instead of raw index counts.)
-  const straight = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0 }]);
-  const kinked = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 0.05 }], 200, true);
-  const fanVerts = (m) => posOf(m).length / 4 - (1 + 5 * (m.curve.curve.length - 1));
-  H.eq(fanVerts(kinked), fanVerts(straight), "kink adds no fan verts");
-});
-
-test("slider-mesh: sharp kink has no double-drawn interior (single coverage)", () => {
-  // Butt quads of the two legs used to overlap in a full R x R square at
-  // a sharp kink (~23% of the kink-region body double-drawn, visible as
-  // alpha-doubled streaks); the inner span collapses to a fan around the
-  // kink miter. Measure double-drawn AREA (pair counts over-weight
-  // sub-pixel boundary slivers): rasterize the kink region and require
-  // <3% of covered pixels to be covered twice.
-  const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 200, true);
-  checkGeometry(m, "kink");
-  const R = 50;
-  const pos = posOf(m);
-  const idx = m.bodyGeom.indexBuffer.data;
-  const P = (v) => ({ x: pos[4 * v], y: pos[4 * v + 1] });
-  const n = idx.length / 3;
-  const inside = (px, py, A, B, C) => {
-    // strict interior: shared tiling edges must not count as double-drawn
-    const d = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y);
-    if (Math.abs(d) < 1e-12) return false;
-    const l1 = ((B.y - C.y) * (px - C.x) + (C.x - B.x) * (py - C.y)) / d;
-    const l2 = ((C.y - A.y) * (px - C.x) + (A.x - C.x) * (py - C.y)) / d;
-    return l1 > 1e-7 && l2 > 1e-7 && l1 + l2 < 1 - 1e-7;
-  };
-  let single = 0, dbl = 0;
-  for (let gx = 100 - R - 5; gx <= 100 + R + 5; gx += 2) {
-    for (let gy = -R - 5; gy <= R + 5; gy += 2) {
-      let c = 0;
-      for (let t = 0; t < n; t++) {
-        if (inside(gx, gy, P(idx[3 * t]), P(idx[3 * t + 1]), P(idx[3 * t + 2]))) {
-          if (++c > 1) break;
-        }
-      }
-      if (c === 1) single++;
-      else if (c > 1) dbl++;
-    }
+test("slider-mesh: partial rebuilds never exceed the fixed buffer capacity", () => {
+  // Prepass buffers are allocated once for the full path; a partial path
+  // is cut from the same grid, so it can never need more quads.
+  const m = meshFromPoints(
+    [{ x: 0, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 40 }, { x: 120, y: 40 }], 220, true);
+  initMesh(m);
+  const cap = m.quadCap;
+  H.eq(m.prepassGeom.attributes.position.buffer.data.length, cap * 8,
+    "position buffer sized for capacity");
+  for (const [a, b] of [[0, 0.2], [0.2, 0.5], [0.5, 1], [0, 1], [0.35, 0.35], [0, 0.01], [0.99, 1]]) {
+    m.rebuildGeometry(a, b);
+    const { used } = usedVerts(m);
+    H.assert(used.size <= cap * 4, `range ${a},${b}: ${used.size} verts <= capacity ${cap * 4}`);
+    H.assert(used.size >= 4, `range ${a},${b}: emits a quad`);
   }
-  console.log(`    kink region: single=${single} dbl=${dbl}`);
-  H.assert(single > 100, "kink region has body pixels");
-  H.assert(dbl / (single + dbl) < 0.03, `double-drawn fraction ${(dbl / (single + dbl) * 100).toFixed(2)}% < 3%`);
+  m.destroy();
 });
 
 function countUncovered(m, R) {
-  // every pixel within R-1 of the centerline must sit inside a triangle
-  // (guards against holes from span collapsing); 2px raster for speed.
-  const pos = posOf(m);
-  const idx = m.bodyGeom.indexBuffer.data;
-  const P = (v) => ({ x: pos[4 * v], y: pos[4 * v + 1] });
-  const n = idx.length / 3;
+  // every pixel within R-1 of the centerline must sit inside a quad
+  // (guards holes in the coverage field's support); 2px raster for speed.
+  const { pos, idx } = pre(m);
+  const P = (v) => ({ x: pos[2 * v], y: pos[2 * v + 1] });
+  const tris = [];
+  for (let t = 0; t < idx.length / 3; t++) {
+    const [a, b, c] = [idx[3 * t], idx[3 * t + 1], idx[3 * t + 2]];
+    if (a === 0 && b === 0 && c === 0) continue;
+    tris.push([a, b, c]);
+  }
   const inside = (px, py, A, B, C) => {
     const d = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y);
     if (Math.abs(d) < 1e-12) return false;
@@ -291,8 +299,8 @@ function countUncovered(m, R) {
       }
       if (dmin > R - 1) continue;
       let covered = false;
-      for (let t = 0; t < n && !covered; t++)
-        if (inside(gx, gy, P(idx[3 * t]), P(idx[3 * t + 1]), P(idx[3 * t + 2]))) covered = true;
+      for (let t = 0; t < tris.length && !covered; t++)
+        if (inside(gx, gy, P(tris[t][0]), P(tris[t][1]), P(tris[t][2]))) covered = true;
       if (!covered) missing++;
     }
   }
@@ -301,67 +309,24 @@ function countUncovered(m, R) {
 
 test("slider-mesh: kink and fold-back tip have no coverage holes", () => {
   const kink = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 200, true);
-  H.eq(countUncovered(kink, 50), 0, "kink fully covered");
+  H.eq(countUncovered(kink, R), 0, "kink fully covered");
   const fold = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: 0 }], 200, true);
   checkGeometry(fold, "fold");
-  H.eq(countUncovered(fold, 50), 0, "fold tip fully covered");
+  H.eq(countUncovered(fold, R), 0, "fold tip fully covered");
 });
 
-function dblFraction(m, R) {
-  // strict-interior double-drawn fraction over the whole body (2px
-  // raster): shared tiling edges must not count, only real area overlap.
-  const pos = posOf(m);
-  const idx = m.bodyGeom.indexBuffer.data;
-  const P = (v) => ({ x: pos[4 * v], y: pos[4 * v + 1] });
-  const n = idx.length / 3;
-  const inside = (px, py, A, B, C) => {
-    const d = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y);
-    if (Math.abs(d) < 1e-12) return false;
-    const l1 = ((B.y - C.y) * (px - C.x) + (C.x - B.x) * (py - C.y)) / d;
-    const l2 = ((C.y - A.y) * (px - C.x) + (A.x - C.x) * (py - C.y)) / d;
-    return l1 > 1e-7 && l2 > 1e-7 && l1 + l2 < 1 - 1e-7;
-  };
-  const pts = m.curve.curve;
-  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-  for (const p of pts) {
-    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
-    y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
-  }
-  let single = 0, dbl = 0;
-  for (let gx = Math.floor(x0) - R; gx <= x1 + R; gx += 2) {
-    for (let gy = Math.floor(y0) - R; gy <= y1 + R; gy += 2) {
-      let c = 0;
-      for (let t = 0; t < n; t++) {
-        if (inside(gx, gy, P(idx[3 * t]), P(idx[3 * t + 1]), P(idx[3 * t + 2]))) {
-          if (++c > 1) break;
-        }
-      }
-      if (c === 1) single++;
-      else if (c > 1) dbl++;
-    }
-  }
-  return { single, dbl, frac: dbl / Math.max(1, single + dbl) };
-}
-
-test("slider-mesh: pretzel shapes stay bounded (no wholesale doubling)", () => {
-  // Legs closer than 2R genuinely intersect; the union trims midlines,
-  // trims intruding fans and drops covered micros. Bounds are loose
-  // (true pre-fix baselines at R=30: S ~25%, hairpin ~55%), guarding
-  // against regressions to fully-doubled gutters, not asserting
-  // perfection (seam slivers remain on extreme pretzels).
+test("slider-mesh: pretzel shapes have no coverage holes", () => {
+  // Overlapping legs are resolved by the GPU MAX pass, so the CPU only
+  // has to guarantee support: every pixel within radius of the path
+  // falls in at least one quad, where the coverage field is computed.
   const build = (hit) => new SliderMesh(new LinearBezier(hit, true), 30, 0);
   const S = build({ x: 0, y: 0, keyframes: [{ x: 40, y: 0 }, { x: 40, y: 25 }, { x: 0, y: 25 }, { x: 0, y: 50 }], pixelLength: 130 });
   checkGeometry(S, "tight-S");
-  const s = dblFraction(S, 30);
-  console.log(`    tight-S: single=${s.single} dbl=${s.dbl} (${(s.frac * 100).toFixed(2)}%)`);
-  H.assert(s.frac < 0.24, `tight-S double fraction ${(s.frac * 100).toFixed(2)}% < 24%`);
   H.eq(countUncovered(S, 30), 0, "tight-S fully covered");
   const Hp = build({ x: 0, y: 0, keyframes: [{ x: 100, y: 0 }, { x: 100, y: 8 }, { x: 0, y: 8 }], pixelLength: 208 });
   checkGeometry(Hp, "hairpin");
-  const h = dblFraction(Hp, 30);
-  console.log(`    hairpin: single=${h.single} dbl=${h.dbl} (${(h.frac * 100).toFixed(2)}%)`);
-  H.assert(h.frac < 0.16, `hairpin double fraction ${(h.frac * 100).toFixed(2)}% < 16%`);
   H.eq(countUncovered(Hp, 30), 0, "hairpin fully covered");
+  S.destroy(); Hp.destroy();
 });
 
 test("slider-mesh: gradient texture uploads as premultiplied", () => {
@@ -370,4 +335,5 @@ test("slider-mesh: gradient texture uploads as premultiplied", () => {
   const m = meshFromPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
   initMesh(m);
   H.eq(m.sliderTexture.source.alphaMode, "premultiplied-alpha", "declared truthfully");
+  m.destroy();
 });

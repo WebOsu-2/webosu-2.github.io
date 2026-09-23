@@ -173,6 +173,7 @@ function makeAudioContextStub(opts = {}) {
     createBufferSource() {
       const s = {
         playbackRate: { value: 1 },
+        detune: { value: 0 },
         buffer: null, onended: null,
         connect() {}, disconnect() {},
         started: null, stopped: false,
@@ -182,12 +183,20 @@ function makeAudioContextStub(opts = {}) {
       ctx.sources.push(s);
       return s;
     },
+    numberOfChannels: opts.numberOfChannels || 1,
+    duration: opts.duration || 180,
     decodeMode: opts.decodeMode || "ok", // "ok" | "fail"
     decodeAudioData(buf, ok, err) {
       // async like the real API (also avoids reentrancy during construction)
       setTimeout(() => {
-        if (this.decodeMode === "ok") ok({ duration: opts.duration || 180 });
-        else if (typeof err === "function") err(new Error("decode failed"));
+        if (this.decodeMode === "ok") {
+          const channelCount = this.numberOfChannels;
+          ok({
+            duration: this.duration,
+            numberOfChannels: channelCount,
+            getChannelData() { return new Float32Array(8); },
+          });
+        } else if (typeof err === "function") err(new Error("decode failed"));
       }, 0);
     },
   };
