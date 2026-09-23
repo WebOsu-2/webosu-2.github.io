@@ -1,92 +1,148 @@
 /*
  * custom class, extends PIXI.Container
- * Renders an osu! slider as two v8 Mesh children sharing one GlProgram:
- * the static unioned body (complete sliders), plus a snake mesh rebuilt
- * per frame from the partial path while growing/receding — the moving
- * head is a true round cap of the same mesh, seamless by construction
- * (lazer SliderBody architecture). Per-frame work is uniform updates
- * plus one partial-path rebuild while snaking: no manual GL, no depth
- * prepass. Coplanar triangles sharing vertices are covered exactly once
- * by rasterization rules, so no depth buffer games are needed for clean
- * joints. The vertex shader retains a clip stage (unused: both meshes
- * always draw whole).
-*
-* constructor params
-*   curve: { curve: [{x,y,t}], pointAt(t) }, in osu pixels
-*   radius: radius of hit circle, in osu! pixels
-*   tintid: color slot index
-*/
+ * Renders an osu! slider with lazer's two-pass path pipeline:
+ *
+ *  1. coverage prepass: one quad per path segment (extended by the body
+ *     radius at both ends so round caps/joins emerge from the field),
+ *     drawn with blend equation MAX (ONE/ONE) into a per-slider
+ *     RenderTexture. Each fragment writes
+ *         clamp(1 - dstToLine(segA, segB, fragPos) / radius, 0, 1)
+ *     so the MAX over overlapping quads is the fragment closest to the
+ *     path: an exact union of capsules. Overlapping legs, kinks and
+ *     folds resolve on the GPU; no CPU boolean geometry, no miter/trim
+ *     bookkeeping, no double-drawn borders crossing a fold's interior.
+ *
+ *  2. composite: one static quad over the path bounds samples the
+ *     coverage texture and maps (1 - coverage) through the gradient LUT
+ *     (border / inner fill / rim blur), scaled by the slider's global
+ *     alpha. The LUT is not monotone (interior alpha dips toward the
+ *     center), so colors must be composed AFTER the max, never blended
+ *     with it.
+ *
+ * Snaking rebuilds the prepass quads from the partial path and only
+ * re-renders the coverage texture when the geometry (or its pixel size)
+ * changes. The playfield transform lives entirely in the composite
+ * vertex shader, so window resizes affect only the texture size.
+ * Per-frame work for a complete slider is uniform updates only.
+ *
+ * constructor params
+ *   curve: { curve: [{x,y,t}], pointAt(t) }, in osu pixels
+ *   radius: radius of hit circle, in osu! pixels
+ *   tintid: color slot index
+ */
 
 import * as PIXI from './lib/pixi.mjs';
 
-// GLSL ES 3.00 (v8 compiles custom programs as such; no #version needed,
-// mirroring v8's own raw-shader examples).
-const vertexSrc = `
-in vec4 position;
-out float dist;
-out float tpos;
-uniform float dx;
-uniform float dy;
-uniform float dt;
-uniform float ox;
-uniform float oy;
-uniform float ot;
+// GLSL ES 1.00 (no #version: v8 rewrites `in`/`out`/`texture`/`finalColor`
+// through WebGL1 compatibility defines). Fragment sources must start with
+// `precision highp` or v8 prepends its default mediump: the distance field
+// would otherwise quantize visibly on high-DPI screens.
+
+// Pass 1 vertex: bounds -> NDC so the quad fills the coverage texture.
+// gl_Position.w = 1, so the path/segment varyings interpolate exactly.
+const prepassVertexSrc = `
+in vec2 position;
+in vec2 segA;
+in vec2 segB;
+out vec2 vPath;
+out vec2 vSegA;
+out vec2 vSegB;
+uniform float scaleX;
+uniform float scaleY;
+uniform float offX;
+uniform float offY;
 void main() {
-    dist = position.w;
-    tpos = position.z;
-    gl_Position = vec4(position.x, position.y, position.w + 2.0 * float(position.z * dt > ot), 1.0);
-    gl_Position.x = gl_Position.x * dx + ox;
-    gl_Position.y = gl_Position.y * dy + oy;
+    vPath = position;
+    vSegA = segA;
+    vSegB = segB;
+    gl_Position = vec4(position.x * scaleX + offX, position.y * scaleY + offY, 0.0, 1.0);
 }`;
 
-const fragmentSrc = `
-in float dist;
+// Pass 1 fragment: coverage of this segment's capsule (verbatim port of
+// osu-framework sh_PathPrepass's dstToLine + falloff). MAX blending
+// across overlapping fragments picks the smallest distance-to-path.
+const prepassFragmentSrc = `precision highp float;
+in vec2 vPath;
+in vec2 vSegA;
+in vec2 vSegB;
+uniform float radius;
+out vec4 finalColor;
+
+float dstToLine(vec2 p, vec2 a, vec2 b) {
+    vec2 dir = b - a;
+    float len2 = dot(dir, dir);
+    if (len2 < 1e-6) return distance(p, a);
+    float t = clamp(dot(p - a, dir), 0.0, len2) / len2;
+    return distance(p, a + dir * t);
+}
+
+void main() {
+    float cov = clamp(1.0 - dstToLine(vPath, vSegA, vSegB) / radius, 0.0, 1.0);
+    if (cov <= 0.0) discard;
+    finalColor = vec4(cov, cov, cov, cov);
+}`;
+
+// Pass 2 vertex: the usual playfield transform of the bounds quad.
+const vertexSrc = `
+in vec2 position;
+in vec2 aUv;
+out vec2 vUv;
+uniform float dx;
+uniform float dy;
+uniform float ox;
+uniform float oy;
+void main() {
+    vUv = aUv;
+    gl_Position = vec4(position.x * dx + ox, position.y * dy + oy, 0.0, 1.0);
+}`;
+
+// Pass 2 fragment: coverage -> gradient LUT. The cutout at cov == 0
+// keeps the body from touching fragments outside the path (lazer's
+// `dstFromEdge > 0` cutout); the LUT already fades to alpha 0 at the
+// rim, so the edge stays seamless.
+const fragmentSrc = `precision highp float;
+in vec2 vUv;
+uniform sampler2D uCoverage;
 uniform sampler2D uSampler2;
 uniform float alpha;
 uniform float texturepos;
 out vec4 finalColor;
 void main() {
-    finalColor = alpha * texture(uSampler2, vec2(dist, texturepos));
+    float cov = texture(uCoverage, vUv).r;
+    if (cov <= 0.0) discard;
+    finalColor = alpha * texture(uSampler2, vec2(1.0 - cov, texturepos));
 }`;
 
-function makeUniforms() {
+function makeCompositeUniforms() {
     return new PIXI.UniformGroup({
         alpha: { value: 1, type: 'f32' },
         texturepos: { value: 0, type: 'f32' },
         dx: { value: 1, type: 'f32' },
-        dy: { value: 1, type: 'f32' },
+        dy: { value: -1, type: 'f32' },
         ox: { value: 0, type: 'f32' },
         oy: { value: 0, type: 'f32' },
-        dt: { value: 0, type: 'f32' },
-        ot: { value: 1, type: 'f32' },
     });
 }
 
-function makeShader(samplerSource) {
-    return new PIXI.Shader({
-        glProgram: SliderMesh.prototype.glProgram,
-        resources: {
-            sliderUniforms: makeUniforms(),
-            uSampler2: samplerSource,
-        },
+// Prepass projection (bounds -> NDC) depends only on the static path
+// bounds, never on the playfield transform, so these are set once.
+function makePrepassUniforms(b, radius) {
+    // degenerate bounds (radius 0) would otherwise divide by zero
+    const sx = b.x1 > b.x0 ? 2 / (b.x1 - b.x0) : 0;
+    const sy = b.y1 > b.y0 ? 2 / (b.y1 - b.y0) : 0;
+    return new PIXI.UniformGroup({
+        scaleX: { value: sx, type: 'f32' },
+        scaleY: { value: sy, type: 'f32' },
+        offX: { value: -1 - b.x0 * sx, type: 'f32' },
+        offY: { value: -1 - b.y0 * sy, type: 'f32' },
+        radius: { value: radius, type: 'f32' },
     });
 }
 
-function makeGeometry(verts, index) {
-    const g = new PIXI.Geometry();
-    g.addAttribute('position', verts, 4);
-    g.addIndex(index);
-    return g;
-}
-
-// osu!-style snaking: while growing/receding, the visible mesh is rebuilt
-// from the truncated point list (partial path) instead of clipping the
-// full body in the shader. curvePoints puts round caps on both ends of
-// whatever list it gets, so the moving head is a true round cap of the
-// same mesh — seamless by construction, like lazer's SliderBody. The
-// exact single-coverage union is skipped on rebuilds (it is the slow
-// stage, and overlaps are near-invisible under the opaque legacy fill);
-// the complete slider keeps the full unioned mesh.
+// osu!-style snaking: the visible prepass geometry is rebuilt from the
+// truncated point list (partial path) instead of clipping the full body
+// in the shader, so the moving head is a true round cap of the same
+// distance field — seamless by construction, like lazer's SliderBody.
 export function partialPoints(pts, fromT, toT) {
     // pts sorted by .t (curve grid); keeps [fromT, toT] with exact
     // interpolated boundary points so caps land precisely on the head.
@@ -179,788 +235,115 @@ function newTextureData(colors, SliderTrackOverride, SliderBorder) {
     return { data: buff, width: width, height: colors.length };
 }
 
-const DIVIDES = 64;
-// Returns plain { verts, index } (no GL objects): butt quad strip with
-// degenerate-segment guards, round outer joins, and miter-welded inner
-// joins (collapsed to a fan around the kink miter across overlapped spans).
-// skipUnion (snake rebuilds only): exact union is the slow stage and is
-// skipped per-frame; overlaps stay near-invisible under the opaque fill.
-function curvePoints(curve0, radius, skipUnion) {
-    let curve = [];
-    for (let i = 0; i < curve0.length; ++i)
-        if (i === 0 || Math.abs(curve0[i].x - curve0[i - 1].x) > 0.00001 || Math.abs(curve0[i].y - curve0[i - 1].y) > 0.00001)
-            curve.push(curve0[i]);
-    // Snap near-coincident non-adjacent points (folded paperclips sample
-    // out-and-back legs at different resample phases, up to half a step
-    // apart): snapping them exact lets overlapping legs share identical
-    // quads, which the union below drops whole. Positions move <1.6px
-    // (invisible); t is preserved, so ball/snake mapping is unaffected.
-    // Segments with both endpoints snapped duplicate earlier geometry,
-    // so their quads are skipped outright (exact fold removal).
-    // A snap must never fold the path back on itself: merging a
-    // same-leg micro-jog onto a neighbor would manufacture a hairpin the
-    // map never had (visible doubled wedge). Three guards (genuine folds
-    // pass all three, artifacts fail at least one):
-    // 1. the merged point must not reverse the local direction past 120
-    //    degrees (folds continue in the same direction after the merge);
-    // 2. the merged segment must run near-parallel (|cos| > 0.9) to a
-    //    segment at the target: only genuinely overlapping legs share
-    //    quads (rejects merges ACROSS a joint);
-    // 3. no phantom spikes: the merge must not leave a sharp (>30°)
-    //    deflection on micro-short (<4px) segments at the touched joints.
-    //    A 1px snap wiggle would otherwise grow a full R-sized round fan
-    //    and miter thorn (join geometry keys on angle, not length).
-    const snapped = new Array(curve.length).fill(false);
-    // sharp micro-deflection test on explicit coords (prev -> joint ->
-    // next): true for a >30° kink on <4px segments (a phantom spike).
-    const sharpMicro = (px, py, kx, ky, nx, ny) => {
-        const ax = kx - px, ay = ky - py;
-        const bx = nx - kx, by = ny - ky;
-        const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
-        if (la < 1e-9 || lb < 1e-9 || la >= 4 || lb >= 4) return false;
-        return Math.abs(ax * by - bx * ay) / (la * lb) > 0.5;
-    };
-    for (let i = 0; i < curve.length; ++i) {
-        for (let j = 0; j < i - 1; ++j) {
-            const dx = curve[i].x - curve[j].x, dy = curve[i].y - curve[j].y;
-            if (dx * dx + dy * dy < 1.6 * 1.6) {
-                const ax0 = curve[i].x - curve[i - 1].x, ay0 = curve[i].y - curve[i - 1].y;
-                const la0 = Math.hypot(ax0, ay0);
-                let parallel = la0 < 1e-9;
-                if (!parallel) {
-                    const segs = [];
-                    if (j > 0) segs.push([curve[j].x - curve[j - 1].x, curve[j].y - curve[j - 1].y]);
-                    if (j + 1 < curve.length) segs.push([curve[j + 1].x - curve[j].x, curve[j + 1].y - curve[j].y]);
-                    for (const [bx, by] of segs) {
-                        const lb = Math.hypot(bx, by);
-                        if (lb > 1e-9 && Math.abs(ax0 * bx + ay0 * by) / (la0 * lb) > 0.9) {
-                            parallel = true;
-                            break;
-                        }
-                    }
-                }
-                if (!parallel) continue;
-                if (i > 0 && i + 1 < curve.length) {
-                    const ax = curve[j].x - curve[i - 1].x, ay = curve[j].y - curve[i - 1].y;
-                    const bx = curve[i + 1].x - curve[j].x, by = curve[i + 1].y - curve[j].y;
-                    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
-                    if (la > 1e-9 && lb > 1e-9 && (ax * bx + ay * by) / (la * lb) < -0.5) continue;
-                }
-                // spike guard on post-snap coords (point i lands on j):
-                // joints i-1 and i+1 keep their spots but gain/lose an
-                // edge, joint i moves.
-                const nx = curve[j].x, ny = curve[j].y;
-                if ((i - 1 >= 1 && sharpMicro(curve[i - 2].x, curve[i - 2].y, curve[i - 1].x, curve[i - 1].y, nx, ny)) ||
-                    (i + 1 < curve.length && sharpMicro(curve[i - 1].x, curve[i - 1].y, nx, ny, curve[i + 1].x, curve[i + 1].y)) ||
-                    (i + 2 < curve.length && sharpMicro(nx, ny, curve[i + 1].x, curve[i + 1].y, curve[i + 2].x, curve[i + 2].y))) continue;
-                curve[i] = { x: curve[j].x, y: curve[j].y, t: curve[i].t };
-                snapped[i] = true;
-                break;
-            }
+// Plain { pos, segA, segB, index, quads } (no GL objects): one quad per
+// segment, extended by radius at both ends. The rectangle of segment AB
+// extended by +/-radius along its direction contains the whole capsule
+// (round caps included: |component| of any corner offset is at least
+// radius per axis), so the union of the quads covers every point within
+// radius of the path — the GPU max of the per-fragment distance field
+// over them is the exact slider shape. Consecutive near-coincident
+// points are dropped (their neighbors' quads cover the joint disc), and
+// a fully degenerate curve falls back to a tiny segment so we never
+// emit an empty mesh or NaN normals.
+function capsuleQuads(pts0, radius) {
+    let pts = [];
+    for (let i = 0; i < pts0.length; ++i)
+        if (i === 0 || Math.abs(pts0[i].x - pts0[i - 1].x) > 0.00001 ||
+                Math.abs(pts0[i].y - pts0[i - 1].y) > 0.00001)
+            pts.push(pts0[i]);
+    if (pts.length < 2) {
+        const p0 = pts0[0] || { x: 0, y: 0 };
+        pts = [{ x: p0.x, y: p0.y }, { x: p0.x + 0.001, y: p0.y }];
+    }
+    const quads = pts.length - 1;
+    const pos = new Float32Array(quads * 8);
+    const segA = new Float32Array(quads * 8);
+    const segB = new Float32Array(quads * 8);
+    const index = new Uint32Array(quads * 6);
+    for (let k = 0; k < quads; ++k) {
+        const p0 = pts[k], p1 = pts[k + 1];
+        const dx = p1.x - p0.x, dy = p1.y - p0.y;
+        const len = Math.hypot(dx, dy);
+        const inv = radius / len;
+        const ux = dx * inv, uy = dy * inv;   // unit direction * radius
+        const nx = -uy, ny = ux;              // unit normal * radius
+        const a0x = p0.x - ux, a0y = p0.y - uy; // segment ends extended +/-radius
+        const a1x = p1.x + ux, a1y = p1.y + uy;
+        const v = k * 8;
+        pos[v] = a0x - nx; pos[v + 1] = a0y - ny;
+        pos[v + 2] = a0x + nx; pos[v + 3] = a0y + ny;
+        pos[v + 4] = a1x - nx; pos[v + 5] = a1y - ny;
+        pos[v + 6] = a1x + nx; pos[v + 7] = a1y + ny;
+        for (let c = 0; c < 4; ++c) {
+            segA[v + 2 * c] = p0.x; segA[v + 2 * c + 1] = p0.y;
+            segB[v + 2 * c] = p1.x; segB[v + 2 * c + 1] = p1.y;
         }
+        const t = k * 6, w = k * 4;
+        index[t] = w; index[t + 1] = w + 1; index[t + 2] = w + 2;
+        index[t + 3] = w + 2; index[t + 4] = w + 1; index[t + 5] = w + 3;
     }
-    // Degenerate curve (all points coincident): fall back to a tiny
-    // segment so we never emit NaN normals / out-of-bounds indices,
-    // which previously made sliders flicker or disappear.
-    if (curve.length < 2) {
-        let p0 = curve0[0] || { x: 0, y: 0, t: 0 };
-        curve = [
-            { x: p0.x, y: p0.y, t: 0 },
-            { x: p0.x + 0.001, y: p0.y, t: 1 },
-        ];
-    }
-
-    let vert = [];
-    let index = [];
-    vert.push(curve[0].x, curve[0].y, curve[0].t, 0.0);
-    for (let i = 1; i < curve.length; ++i) {
-        let x = curve[i].x;
-        let y = curve[i].y;
-        let t = curve[i].t;
-        let lx = curve[i - 1].x;
-        let ly = curve[i - 1].y;
-        let lt = curve[i - 1].t;
-        let dx = x - lx;
-        let dy = y - ly;
-        let length = Math.hypot(dx, dy);
-        // Guard against zero-length segments: unguarded division produced
-        // NaN/Infinity normals, corrupting the whole vertex buffer and
-        // making curved portions flicker or vanish.
-        let inv = length > 1e-6 ? radius / length : 0;
-        let ox = -dy * inv;
-        let oy = dx * inv;
-
-        vert.push(lx + ox, ly + oy, lt, 1.0);
-        vert.push(lx - ox, ly - oy, lt, 1.0);
-        vert.push(x + ox, y + oy, t, 1.0);
-        vert.push(x - ox, y - oy, t, 1.0);
-        vert.push(x, y, t, 0.0);
-    }
-
-    function addArc(c, p1, p2, t = 0.0) {
-        let theta_1 = Math.atan2(vert[4 * p1 + 1] - vert[4 * c + 1], vert[4 * p1] - vert[4 * c]);
-        let theta_2 = Math.atan2(vert[4 * p2 + 1] - vert[4 * c + 1], vert[4 * p2] - vert[4 * c]);
-        if (theta_1 > theta_2)
-            theta_2 += 2 * Math.PI;
-        let theta = theta_2 - theta_1;
-        let divs = Math.ceil(DIVIDES * Math.abs(theta) / (2 * Math.PI));
-        theta /= divs;
-        let last = p1;
-        for (let i = 1; i < divs; ++i) {
-            vert.push(vert[4 * c] + radius * Math.cos(theta_1 + i * theta),
-                vert[4 * c + 1] + radius * Math.sin(theta_1 + i * theta), t, 1.0);
-            let newv = vert.length / 4 - 1;
-            index.push(c, last, newv);
-            last = newv;
-        }
-        index.push(c, last, p2);
-    }
-
-    addArc(0, 1, 2, curve[0].t);
-    addArc(5 * curve.length - 5, 5 * curve.length - 6, 5 * curve.length - 7, curve[curve.length - 1].t);
-    // Inner-side miter vertices per joint (-1 = none: endpoints, straight
-    // or degenerate joints keep butt sections, which tile exactly there).
-    // Miter-welding makes adjacent quads share full edges, so the inner
-    // side renders with exact single coverage instead of overlapping
-    // butt-section lenses (visible as streaks/doubled regions).
-    const miterL = new Array(curve.length).fill(-1);
-    const miterR = new Array(curve.length).fill(-1);
-    // Bevel triangles for joints past the miter limit (emitted with the
-    // strip below): chamfer (buttPrev, buttCurr, jointCenter) tiles the
-    // concave notch exactly with zero overlap (lazer gets this for free
-    // from its distance-field joins; the CPU equivalent is bevel).
-    const bevels = [];
-    // Standard miter limit (cf. Canvas/SVG): welding past ~2R throws a
-    // long thorn past the far edge on sharp turns (visible spike +
-    // doubled wedge once span-collapsing spreads it). Past the limit the
-    // inner side bevels instead; the outer side keeps its round join.
-    const MITER_LIMIT = 2.0;
-    function miterPos(i, side) {
-        // Intersect the two inner edge lines at joint i. side +1 = left
-        // offsets, -1 = right offsets (matching the butt-vertex layout).
-        // Returns {x, y, d2} (d2 = squared distance from the joint) or
-        // null on degenerate segments; pushes nothing (callers push only
-        // accepted miters, so rejected spikes leave no stray verts).
-        const ux1 = (curve[i].x - curve[i - 1].x);
-        const uy1 = (curve[i].y - curve[i - 1].y);
-        const ux2 = (curve[i + 1].x - curve[i].x);
-        const uy2 = (curve[i + 1].y - curve[i].y);
-        const l1 = Math.hypot(ux1, uy1);
-        const l2 = Math.hypot(ux2, uy2);
-        if (l1 < 1e-6 || l2 < 1e-6) return null;
-        const d1x = ux1 / l1, d1y = uy1 / l1;
-        const d2x = ux2 / l2, d2y = uy2 / l2;
-        const n1x = -d1y * side, n1y = d1x * side;
-        const n2x = -d2y * side, n2y = d2x * side;
-        const cx = curve[i].x, cy = curve[i].y;
-        const p1x = cx + n1x * radius, p1y = cy + n1y * radius;
-        const p2x = cx + n2x * radius, p2y = cy + n2y * radius;
-        const denom = d1x * d2y - d1y * d2x;
-        let mx, my;
-        if (Math.abs(denom) < 1e-9) {
-            mx = (p1x + p2x) / 2;
-            my = (p1y + p2y) / 2;
-        } else {
-            const s = ((p2x - p1x) * d2y - (p2y - p1y) * d2x) / denom;
-            mx = p1x + s * d1x;
-            my = p1y + s * d1y;
-            const mdx = mx - cx, mdy = my - cy;
-            if (mdx * mdx + mdy * mdy > 9 * radius * radius) {
-                mx = (p1x + p2x) / 2;
-                my = (p1y + p2y) / 2;
-            }
-        }
-        const dx = mx - cx, dy = my - cy;
-        return { x: mx, y: my, d2: dx * dx + dy * dy };
-    }
-    for (let i = 1; i < curve.length - 1; ++i) {
-        let dx1 = curve[i].x - curve[i - 1].x;
-        let dy1 = curve[i].y - curve[i - 1].y;
-        let dx2 = curve[i + 1].x - curve[i].x;
-        let dy2 = curve[i + 1].y - curve[i].y;
-        // Skip joints on degenerate (zero-length) segments: their
-        // direction is undefined and previously produced NaN arcs.
-        const l1 = Math.hypot(dx1, dy1);
-        const l2 = Math.hypot(dx2, dy2);
-        if (l1 < 1e-6 || l2 < 1e-6) continue;
-        const sin = (dx1 * dy2 - dx2 * dy1) / (l1 * l2);
-        // Fold-back (hairpin) tip: the path reverses, so neither side is
-        // "inner"; without a join the tip shows a semicircular notch past
-        // the joint. Emit a round fan over the tip half (CCW from the
-        // arrival right-butt to the arrival left-butt passes the tip).
-        const cos = (dx1 * dx2 + dy1 * dy2) / (l1 * l2);
-        if (Math.abs(sin) < 1e-3 && cos < -0.5) {
-            addArc(5 * i, 5 * i - 1, 5 * i - 2, curve[i].t);
-            continue;
-        }
-        // Skip effectively-straight joints: the quads already tile cleanly,
-        // and the sliver-thin fan/bevel triangles would rasterize as
-        // streaks along the slider side.
-        if (Math.abs(sin) < 1e-3) continue;
-        let t = sin > 0 ? 1 : -1;
-        // The joint's curve parameter goes on the fan: the shader clips
-        // snake in/out per-fragment on it, so fans left at t=0 would pop
-        // in ahead of the snake head and the slider would fall apart.
-        // Outer side keeps the round join (established look); the inner
-        // side is miter-welded (shared vertex, exact tiling, no overlap),
-        // or beveled past the miter limit (chamfer, no thorn, no notch).
-        // Butt layout per segment k: L_prev=5k-4, R_prev=5k-3,
-        // L_curr=5k-2, R_curr=5k-1; joint centers C_k=5k.
-        const lim2 = MITER_LIMIT * MITER_LIMIT * radius * radius;
-        if (t > 0) {
-            // outer (right-side) round join
-            addArc(5 * i, 5 * i - 1, 5 * i + 2, curve[i].t);
-            const mp = miterPos(i, +1);
-            if (mp && mp.d2 <= lim2) {
-                vert.push(mp.x, mp.y, curve[i].t, 1.0);
-                miterL[i] = vert.length / 4 - 1;
-            } else if (mp) {
-                bevels.push([5 * i - 2, 5 * i + 1, 5 * i]);
-            }
-        }
-        else if (t < 0) {
-            addArc(5 * i, 5 * i + 1, 5 * i - 2, curve[i].t);
-            const mp = miterPos(i, -1);
-            if (mp && mp.d2 <= lim2) {
-                vert.push(mp.x, mp.y, curve[i].t, 1.0);
-                miterR[i] = vert.length / 4 - 1;
-            } else if (mp) {
-                bevels.push([5 * i - 1, 5 * i + 2, 5 * i]);
-            }
-        }
-        // t == 0 unreachable (epsilon skip above); straight joints need no
-        // join geometry at all.
-    }
-    // Collapse concave-side edge verts that fall inside the stroke onto
-    // the kink miter. With dense resampling the concave-side overlap of a
-    // sharp kink spans many segments (an R x R square for a 90-degree
-    // kink), so trimming just the two adjacent quads still leaves the
-    // whole square double-drawn (brighter streaks). Joints whose butt edge
-    // lies within radius of the far leg collapse to the kink miter, turning
-    // the span into a fan around the miter that tiles exactly with the
-    // other leg's fan along the miter-to-joint edge. The far-leg search
-    // stays within a local window so distant self-intersections (spirals)
-    // are never merged. Small turns never trigger this (their edge verts
-    // stay within tolerance of radius), keeping gentle curves untouched.
-    function distPtSeg(px, py, ax, ay, bx, by) {
-        const dx = bx - ax, dy = by - ay;
-        const l2 = dx * dx + dy * dy;
-        let u = l2 > 1e-12 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
-        u = u < 0 ? 0 : (u > 1 ? 1 : u);
-        return Math.hypot(ax + u * dx - px, ay + u * dy - py);
-    }
-    const snapTol = 1.0;
-    const spanWin = Math.ceil(radius / 1.5) + 3;
-    for (let k = 1; k < curve.length - 1; ++k) {
-        const Mk = (miterL[k] !== -1) ? miterL[k] : miterR[k];
-        if (Mk === -1) continue;
-        const side = (miterL[k] !== -1) ? +1 : -1;
-        const arr = (side > 0) ? miterL : miterR;
-        for (let dir = -1; dir <= 1; dir += 2) {
-            for (let j = k + dir; j >= 1 && j <= curve.length - 2 &&
-                    Math.abs(j - k) <= spanWin; j += dir) {
-                // Another kink's own miter wins: keep it and stop the span.
-                if (arr[j] !== -1) break;
-                const b1 = (side > 0) ? 5 * j - 2 : 5 * j - 1;
-                const b2 = (side > 0) ? 5 * j + 1 : 5 * j + 2;
-                let inside = false;
-                for (let b = 0; b < 2 && !inside; ++b) {
-                    const px = vert[4 * (b ? b2 : b1)];
-                    const py = vert[4 * (b ? b2 : b1) + 1];
-                    if (dir < 0) {
-                        for (let s = k + 1; s < curve.length && s <= k + spanWin; ++s) {
-                            if (distPtSeg(px, py, curve[s - 1].x, curve[s - 1].y,
-                                    curve[s].x, curve[s].y) < radius - snapTol) {
-                                inside = true;
-                                break;
-                            }
-                        }
-                    } else {
-                        for (let s = k; s >= 1 && s >= k - spanWin; --s) {
-                            if (distPtSeg(px, py, curve[s - 1].x, curve[s - 1].y,
-                                    curve[s].x, curve[s].y) < radius - snapTol) {
-                                inside = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!inside) break;
-                arr[j] = Mk;
-            }
-        }
-    }
-    // Quad strip between consecutive cross-sections. Each side resolves to
-    // the joint miter where one was computed, else the butt edge vertex:
-    // shared indices tile exactly, so nothing double-draws.
-    // Butt layout per segment k: L_prev=5k-4, R_prev=5k-3, L_curr=5k-2,
-    // R_curr=5k-1; centers C_0=0, C_k=5k.
-    // tri() drops degenerate triples from collapsed spans (a quad whose
-    // both edge verts snapped to the same miter contributes one fan
-    // triangle; the other triple is empty and must not be emitted).
-    function tri(a, b, c) {
-        if (a === b || b === c || c === a) return;
-        index.push(a, b, c);
-    }
-    // Strip triangles start here (everything before is cap/join fans,
-    // which trim never touches). segOfTri records the owning segment
-    // per strip triple (robust to degenerate skips in collapsed spans).
-    const stripStart = index.length;
-    const segOfTri = [];
-    for (let k = 1; k < curve.length; ++k) {
-        // Fully-snapped segments duplicate earlier geometry (folds):
-        // skip their quads outright (t mapping lives on the resample
-        // array used by playback, which is unaffected).
-        if (snapped[k - 1] && snapped[k]) continue;
-        const cPrev = (k === 1) ? 0 : 5 * (k - 1);
-        const cCurr = 5 * k;
-        const lp = (miterL[k - 1] !== -1) ? miterL[k - 1] : 5 * k - 4;
-        const lc = (miterL[k] !== -1) ? miterL[k] : 5 * k - 2;
-        const rp = (miterR[k - 1] !== -1) ? miterR[k - 1] : 5 * k - 3;
-        const rc = (miterR[k] !== -1) ? miterR[k] : 5 * k - 1;
-        const before = index.length / 3;
-        tri(cPrev, lp, cCurr); tri(lp, lc, cCurr);
-        tri(cPrev, rp, cCurr); tri(rp, rc, cCurr);
-        for (let q = before; q < index.length / 3; ++q) segOfTri.push(k);
-    }
-    // Trim strip triangles of side-by-side parallel legs (close S
-    // legs, near-folds, spiral arms) against their midline, so each leg
-    // keeps its own half and the seam lands mid-gutter instead of
-    // double-drawing it. Only parallel pairs with distinctly separated
-    // lines trim (folds and micro-kinks would slice lengthwise); only
-    // triangles fully flanked by the other segment (every vertex within
-    // R and projecting within its range) cut, otherwise the cut-away
-    // part might lie beyond its tiled strips (a hole). Caps, joins and
-    // non-parallel contacts are left whole for the union below.
-    {
-        const nseg = curve.length - 1;
-        const segA = [], segB = []; // endpoints per segment (1-based)
-        for (let s = 1; s <= nseg; ++s) {
-            segA.push(curve[s - 1]);
-            segB.push(curve[s]);
-        }
-        const segLen = (s) => Math.hypot(segB[s - 1].x - segA[s - 1].x, segB[s - 1].y - segA[s - 1].y);
-        // midline separator of two parallel segment lines, kept side
-        // facing mid_a; null unless distinctly separated
-        function midline(a, b) {
-            const p1 = segA[a - 1], q1 = segB[a - 1], p2 = segA[b - 1], q2 = segB[b - 1];
-            const l1 = segLen(a), l2 = segLen(b);
-            if (l1 < 1e-9 || l2 < 1e-9) return null;
-            const ux = (q1.x - p1.x) / l1, uy = (q1.y - p1.y) / l1;
-            const vx = (q2.x - p2.x) / l2, vy = (q2.y - p2.y) / l2;
-            if (Math.abs(ux * vy - uy * vx) >= 1e-9) return null;
-            const ma = { x: (p1.x + q1.x) / 2, y: (p1.y + q1.y) / 2 };
-            const mb = { x: (p2.x + q2.x) / 2, y: (p2.y + q2.y) / 2 };
-            const perp = Math.abs((mb.x - ma.x) * uy - (mb.y - ma.y) * ux);
-            if (!(perp > 0.5 && perp < 2 * radius + 3)) return null;
-            let nx = -uy, ny = ux;
-            let c = nx * (ma.x + mb.x) / 2 + ny * (ma.y + mb.y) / 2;
-            if (nx * ma.x + ny * ma.y < c) { nx = -nx; ny = -ny; c = -c; }
-            return { nx, ny, c };
-        }
-        const VP = (id) => ({ x: vert[4 * id], y: vert[4 * id + 1], t: vert[4 * id + 2], d: vert[4 * id + 3], id });
-        const trims = new Map(); // seg -> [{nx,ny,c,b}]
-        for (let a = 1; a <= nseg; ++a) {
-            for (let b = a + 2; b <= nseg; ++b) {
-                // rough reject: segment bounding boxes beyond 2R+slack
-                const ax0 = Math.min(segA[a - 1].x, segB[a - 1].x) - 2 * radius;
-                const ax1 = Math.max(segA[a - 1].x, segB[a - 1].x) + 2 * radius;
-                const ay0 = Math.min(segA[a - 1].y, segB[a - 1].y) - 2 * radius;
-                const ay1 = Math.max(segA[a - 1].y, segB[a - 1].y) + 2 * radius;
-                if (Math.max(segA[b - 1].x, segB[b - 1].x) < ax0 || Math.min(segA[b - 1].x, segB[b - 1].x) > ax1 ||
-                    Math.max(segA[b - 1].y, segB[b - 1].y) < ay0 || Math.min(segA[b - 1].y, segB[b - 1].y) > ay1)
-                    continue;
-                const sep = midline(a, b);
-                if (!sep) continue;
-                if (!trims.has(a)) trims.set(a, []);
-                if (!trims.has(b)) trims.set(b, []);
-                trims.get(a).push({ nx: sep.nx, ny: sep.ny, c: sep.c, b });
-                trims.get(b).push({ nx: -sep.nx, ny: -sep.ny, c: -sep.c, b: a });
-            }
-        }
-        if (trims.size) {
-            // Owner of strip triple i is segOfTri[i - S]; each straddling
-            // triangle is cut, far-side pieces drop (their coverer is the
-            // other leg, trimmed symmetrically at the same midline).
-            const S = stripStart / 3;
-            const newIdx = index.slice(0, stripStart);
-            for (let i = S; i < index.length / 3; ++i) {
-                const k = segOfTri[i - S];
-                const hs = trims.get(k);
-                if (!hs) {
-                    newIdx.push(index[3 * i], index[3 * i + 1], index[3 * i + 2]);
-                    continue;
-                }
-                let poly = [VP(index[3 * i]), VP(index[3 * i + 1]), VP(index[3 * i + 2])];
-                let cutAny = false;
-                for (const h of hs) {
-                    const A = segA[h.b - 1], B = segB[h.b - 1];
-                    const ex = B.x - A.x, ey = B.y - A.y;
-                    const el = ex * ex + ey * ey;
-                    const sl = Math.sqrt(el);
-                    // Centroid gates (size-independent, so wide fans and
-                    // jog quads trim like narrow strips): the centroid must
-                    // project within the other segment's range (+/- a few
-                    // px) and sit within R of it; otherwise the cut-away
-                    // part might lie beyond its tiled strips (a hole).
-                    // Failing either gate keeps a safe overdraw sliver.
-                    let gated = el > 1e-12;
-                    if (gated) {
-                        let cx = 0, cy = 0;
-                        for (const v of poly) { cx += v.x; cy += v.y; }
-                        cx /= poly.length; cy /= poly.length;
-                        const u = ((cx - A.x) * ex + (cy - A.y) * ey) / el;
-                        if (u < -4 / sl || u > 1 + 4 / sl) gated = false;
-                        else {
-                            const uc = u < 0 ? 0 : (u > 1 ? 1 : u);
-                            const dx = A.x + uc * ex - cx, dy = A.y + uc * ey - cy;
-                            if (dx * dx + dy * dy > (radius + 1e-7) * (radius + 1e-7)) gated = false;
-                        }
-                    }
-                    if (!gated) continue;
-                    let mn = 1e18, mx = -1e18;
-                    for (const v of poly) {
-                        const d = h.nx * v.x + h.ny * v.y - h.c;
-                        if (d < mn) mn = d;
-                        if (d > mx) mx = d;
-                    }
-                    if (!(mn < -1e-9 && mx > 1e-9)) continue; // no straddle: keep whole
-                    cutAny = true;
-                    const out = [];
-                    for (let e = 0; e < poly.length; ++e) {
-                        const P = poly[e], Q = poly[(e + 1) % poly.length];
-                        const dp = h.nx * P.x + h.ny * P.y - h.c;
-                        const dq = h.nx * Q.x + h.ny * Q.y - h.c;
-                        const pin = dp >= -1e-9, qin = dq >= -1e-9;
-                        const cut = (P, Q, s) => {
-                            const id = vert.length / 4;
-                            vert.push(P.x + s * (Q.x - P.x), P.y + s * (Q.y - P.y),
-                                P.t + s * (Q.t - P.t), P.d + s * (Q.d - P.d));
-                            return { x: vert[4 * id], y: vert[4 * id + 1], t: vert[4 * id + 2], d: vert[4 * id + 3], id };
-                        };
-                        if (pin && qin) out.push(Q);
-                        else if (pin && !qin) out.push(cut(P, Q, dp / (dp - dq)));
-                        else if (!pin && qin) { out.push(cut(P, Q, dp / (dp - dq))); out.push(Q); }
-                    }
-                    poly = out;
-                    if (poly.length < 3) break;
-                }
-                if (!cutAny) {
-                    newIdx.push(index[3 * i], index[3 * i + 1], index[3 * i + 2]);
-                    continue;
-                }
-                if (poly.length < 3) continue;
-                const ids = poly.map((v) => v.id);
-                for (let f = 1; f < ids.length - 1; ++f) {
-                    const A = poly[0], B = poly[f], C = poly[f + 1];
-                    if (Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 < 1e-9) continue;
-                    newIdx.push(ids[0], ids[f], ids[f + 1]);
-                }
-            }
-            index.length = 0;
-            index.push(...newIdx);
-        }
-    }
-    // Bevel chamfers (past-miter-limit joints): exact notch fill, never
-    // trimmed (trims only own strip tris) but still unioned below.
-    // Degenerate chamfers (collinear butt verts) rasterize nothing.
-    for (const [a, b, c] of bevels) {
-        if (a === b || b === c || c === a) continue;
-        const ax = vert[4 * a], ay = vert[4 * a + 1];
-        const bx = vert[4 * b], by = vert[4 * b + 1];
-        const cx = vert[4 * c], cy = vert[4 * c + 1];
-        if (Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) < 1e-9) continue;
-        index.push(a, b, c);
-    }
-    if (skipUnion) return { verts: vert, index: index };
-    return unionSingleCoverage(vert, index);
+    return { pos, segA, segB, index, quads };
 }
 
-// Exact single-coverage union over the strip/fan triangles. Sharp kinks
-// are pre-fanned and side-by-side legs pre-trimmed above, but curved
-// tight loops, endpoint contacts, trim seams and non-parallel leg
-// crossings can still cover regions 2..N times, which alpha-doubles into
-// streaks. Triangles in real area overlap (exact pair test,
-// boundary-exclusive, so clean tiling is untouched) carve already-emitted
-// geometry out of themselves by exact convex subtraction
-// (Sutherland-Hodgman per clip edge, disjoint pieces, first coverage
-// wins, zero holes by construction). Position/t/dist interpolate
-// linearly, so the gradient is unchanged where kept. Residual overdraw
-// is at most an eps-wide boundary hairline (rasterizes to nothing).
-function unionSingleCoverage(vert, index) {
-    const EPS = 1e-9;
-    const at = (id) => ({ x: vert[4 * id], y: vert[4 * id + 1], t: vert[4 * id + 2], d: vert[4 * id + 3] });
-    const boxOf = (a, b, c) => [
-        Math.min(a.x, b.x, c.x), Math.min(a.y, b.y, c.y),
-        Math.max(a.x, b.x, c.x), Math.max(a.y, b.y, c.y),
-    ];
-    const strictOverlapBox = (A, B) => A[0] < B[2] && B[0] < A[2] && A[1] < B[3] && B[1] < A[3];
-    const cross = (ax, ay, bx, by) => ax * by - ay * bx;
-    const edgeC = (A, B, px, py) => cross(B.x - A.x, B.y - A.y, px - A.x, py - A.y);
-    // strict / inclusive point-in-triangle (winding-independent)
-    function inTri(px, py, T, strict) {
-        const c0 = edgeC(T[0], T[1], px, py);
-        const c1 = edgeC(T[1], T[2], px, py);
-        const c2 = edgeC(T[2], T[0], px, py);
-        if (strict) {
-            if (Math.abs(c0) < EPS || Math.abs(c1) < EPS || Math.abs(c2) < EPS) return false;
-            return (c0 > 0 && c1 > 0 && c2 > 0) || (c0 < 0 && c1 < 0 && c2 < 0);
-        }
-        return (c0 >= -EPS && c1 >= -EPS && c2 >= -EPS) ||
-            (c0 <= EPS && c1 <= EPS && c2 <= EPS);
+function boundsOf(pos) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < pos.length; i += 2) {
+        if (pos[i] < x0) x0 = pos[i];
+        if (pos[i] > x1) x1 = pos[i];
+        if (pos[i + 1] < y0) y0 = pos[i + 1];
+        if (pos[i + 1] > y1) y1 = pos[i + 1];
     }
-    function segCross(ax, ay, bx, by, cx, cy, dx, dy) {
-        const d = cross(bx - ax, by - ay, dx - cx, dy - cy);
-        if (Math.abs(d) < 1e-12) return false;
-        const t = (cross(cx - ax, cy - ay, dx - cx, dy - cy)) / d;
-        const u = (cross(cx - ax, cy - ay, bx - ax, by - ay)) / d;
-        return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
+    return { x0, y0, x1, y1 };
+}
+
+// Prepass buffers are sized for the full path: a partial path never has
+// more points than the grid it is cut from (partialPoints keeps <= n).
+function makePrepassGeometry(quadCap) {
+    const g = new PIXI.Geometry();
+    g.addAttribute('position', new Float32Array(quadCap * 8), 2);
+    g.addAttribute('segA', new Float32Array(quadCap * 8), 2);
+    g.addAttribute('segB', new Float32Array(quadCap * 8), 2);
+    g.addIndex(new Uint32Array(quadCap * 6));
+    return g;
+}
+
+function makeCompositeGeometry(b) {
+    const g = new PIXI.Geometry();
+    g.addAttribute('position', new Float32Array([
+        b.x0, b.y0, b.x1, b.y0, b.x0, b.y1, b.x1, b.y1,
+    ]), 2);
+    g.addAttribute('aUv', new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2);
+    g.addIndex([0, 1, 2, 2, 1, 3]);
+    return g;
+}
+
+function getRenderer() {
+    try {
+        if (typeof window === 'undefined' || !window.app) return null;
+        return window.app.renderer || null;
+    } catch (e) {
+        return null;
     }
-    // parse, dropping degenerate triples (they rasterize nothing anyway)
-    const tris = [];
-    for (let i = 0; i < index.length; i += 3) {
-        const a = index[i], b = index[i + 1], c = index[i + 2];
-        if (a === b || b === c || c === a) continue;
-        const T = [at(a), at(b), at(c)];
-        const area2 = (T[1].x - T[0].x) * (T[2].y - T[0].y) - (T[2].x - T[0].x) * (T[1].y - T[0].y);
-        if (Math.abs(area2) < 1e-9) continue;
-        tris.push({ ids: [a, b, c], v: T, box: boxOf(...T) });
+}
+
+// Coverage texture pixel size: one texel per device pixel of playfield
+// (so the composite needs no resolution over its bilinear upscale), with
+// a hard cap so a playfield-spanning slider on a huge display cannot
+// allocate an absurd texture. Falls back to 1 texel per osu pixel until
+// the renderer is known (headless tests, app still booting); the size is
+// re-checked every sync, so the texture upgrades itself in place.
+const MAX_RT_DIM = 2048;
+function coverageSize(bounds, renderer, T) {
+    let s = 1;
+    if (renderer && T) {
+        const rw = Number(renderer.width), rh = Number(renderer.height);
+        if (rw > 0 && rh > 0)
+            s = Math.max(Math.abs(T.dx) * rw / 2, Math.abs(T.dy) * rh / 2);
     }
-    // mark true area overlaps: strict bbox first, then exact pair test
-    // (proper edge crossing or strict containment either way)
-    const CELL = 16;
-    const gkey = (cx, cy) => cx * 4096 + cy;
-    function cellsOf(box) {
-        const r = [];
-        for (let cx = Math.floor(box[0] / CELL); cx <= Math.floor(box[2] / CELL); ++cx)
-            for (let cy = Math.floor(box[1] / CELL); cy <= Math.floor(box[3] / CELL); ++cy)
-                r.push(gkey(cx, cy));
-        return r;
-    }
-    const marked = new Array(tris.length).fill(false);
-    {
-        const cellMap = new Map();
-        const cellLists = tris.map((tr) => cellsOf(tr.box));
-        tris.forEach((tr, ti) => {
-            for (const k of cellLists[ti]) {
-                let l = cellMap.get(k);
-                if (!l) cellMap.set(k, (l = []));
-                l.push(ti);
-            }
-        });
-        const seenPair = new Set();
-        const centroid = (T) => [(T[0].x + T[1].x + T[2].x) / 3, (T[0].y + T[1].y + T[2].y) / 3];
-        const pairHits = (A, B) => {
-            for (let i = 0; i < 3; ++i) for (let j = 0; j < 3; ++j) {
-                const a0 = A[i], a1 = A[(i + 1) % 3], b0 = B[j], b1 = B[(j + 1) % 3];
-                if (segCross(a0.x, a0.y, a1.x, a1.y, b0.x, b0.y, b1.x, b1.y)) return true;
-            }
-            const [cax, cay] = centroid(A), [cbx, cby] = centroid(B);
-            return inTri(cax, cay, B, true) || inTri(cbx, cby, A, true);
-        };
-        tris.forEach((tr, ti) => {
-            for (const k of cellLists[ti]) {
-                for (const tj of cellMap.get(k)) {
-                    if (tj <= ti) continue;
-                    const p = ti * tris.length + tj;
-                    if (seenPair.has(p)) continue;
-                    seenPair.add(p);
-                    const o = tris[tj];
-                    if (!strictOverlapBox(tr.box, o.box)) continue;
-                    // penetration gate: overlap depth is bounded by the
-                    // bbox intersection's smaller side; sub-pixel slivers
-                    // subdivide into hundreds of verts for no visual gain
-                    const iw = Math.min(tr.box[2], o.box[2]) - Math.max(tr.box[0], o.box[0]);
-                    const ih = Math.min(tr.box[3], o.box[3]) - Math.max(tr.box[1], o.box[1]);
-                    if (Math.min(iw, ih) < 0.5) continue;
-                    if (pairHits(tr.v, o.v)) marked[ti] = marked[tj] = true;
-                }
-            }
-        });
-    }
-    const outIndex = [];
-    // Emitted pieces (convex point lists with boxes). Earlier emissions
-    // are never modified, so every covered point keeps exactly its first
-    // coverage: zero holes by construction. Later tris carve already-
-    // emitted geometry out of themselves (exact subtraction), so
-    // non-parallel leg crossings subtract exactly instead of leaving
-    // kept-whole micro bands.
-    const emitted = []; // { v:[p...], box, ti }
-    const emitGrid = new Map();
-    function emitInsert(v, box, ti) {
-        const ei = emitted.length;
-        emitted.push({ v, box, ti });
-        for (const k of cellsOf(box)) {
-            let l = emitGrid.get(k);
-            if (!l) emitGrid.set(k, (l = []));
-            l.push(ei);
-        }
-    }
-    const polyBox = (V) => {
-        let x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
-        for (const p of V) {
-            if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y;
-            if (p.x > x1) x1 = p.x; if (p.y > y1) y1 = p.y;
-        }
-        return [x0, y0, x1, y1];
-    };
-    const polyArea2 = (V) => {
-        let s = 0;
-        for (let i = 0; i < V.length; ++i) {
-            const a = V[i], b = V[(i + 1) % V.length];
-            s += a.x * b.y - b.x * a.y;
-        }
-        return s;
-    };
-    const centroidOfPoly = (V) => {
-        let x = 0, y = 0;
-        for (const p of V) { x += p.x; y += p.y; }
-        return [x / V.length, y / V.length];
-    };
-    // strict point-in-convex-poly (boundary does not count: shared tiling
-    // edges must never trigger a cut)
-    function inPolyStrict(px, py, V) {
-        let sign = 0;
-        for (let i = 0; i < V.length; ++i) {
-            const a = V[i], b = V[(i + 1) % V.length];
-            const c = (b.x - a.x) * (py - a.y) - (b.y - a.y) * (px - a.x);
-            if (Math.abs(c) < 1e-9) return false;
-            const s = c > 0 ? 1 : -1;
-            if (sign !== 0 && s !== sign) return false;
-            sign = s;
-        }
-        return true;
-    }
-    // inclusive point-in-convex-poly (boundary counts: full containment).
-    // Degenerate clips (zero area: a line or point) contain nothing —
-    // without this guard every later piece would test "inside" them and
-    // be wrongly dropped, punching holes along snapped segments.
-    function inPolyOrOn(px, py, V) {
-        if (Math.abs(polyArea2(V)) < 1e-9) return false;
-        let sign = 0;
-        for (let i = 0; i < V.length; ++i) {
-            const a = V[i], b = V[(i + 1) % V.length];
-            const c = (b.x - a.x) * (py - a.y) - (b.y - a.y) * (px - a.x);
-            if (Math.abs(c) < 1e-9) continue;
-            const s = c > 0 ? 1 : -1;
-            if (sign !== 0 && s !== sign) return false;
-            sign = s;
-        }
-        return true;
-    }
-    // proper (area) overlap between convex polys, boundary-exclusive, so
-    // clean tiling neighbors never cut each other
-    function polysHit(A, B) {
-        for (let i = 0; i < A.length; ++i) for (let j = 0; j < B.length; ++j) {
-            const a0 = A[i], a1 = A[(i + 1) % A.length], b0 = B[j], b1 = B[(j + 1) % B.length];
-            if (segCross(a0.x, a0.y, a1.x, a1.y, b0.x, b0.y, b1.x, b1.y)) return true;
-        }
-        const ca = centroidOfPoly(A), cb = centroidOfPoly(B);
-        return inPolyStrict(ca[0], ca[1], B) || inPolyStrict(cb[0], cb[1], A);
-    }
-    function pushVert(p) {
-        const id = vert.length / 4;
-        vert.push(p.x, p.y, p.t, p.d);
-        return id;
-    }
-    function lerpPt(P, Q, s) {
-        return {
-            x: P.x + s * (Q.x - P.x), y: P.y + s * (Q.y - P.y),
-            t: P.t + s * (Q.t - P.t), d: P.d + s * (Q.d - P.d),
-        };
-    }
-    // Sutherland-Hodgman clip of convex P against one half-plane of clip
-    // edge A->B (keepOutside selects the side). Boundary hugs the kept
-    // side (eps): edge-touching fragments survive here and die at the
-    // area gate, so tiling edges never gap.
-    function clipHalf(P, A, B, keepOutside, ccw) {
-        const ex = B.x - A.x, ey = B.y - A.y;
-        const keep = (p) => {
-            const c = ex * (p.y - A.y) - ey * (p.x - A.x);
-            return ccw ? (keepOutside ? c < -1e-9 : c >= -1e-9)
-                       : (keepOutside ? c > 1e-9 : c <= 1e-9);
-        };
-        const crossPt = (Pp, Q) => {
-            const f0 = (Pp.x - A.x) * ey - (Pp.y - A.y) * ex;
-            const f1 = (Q.x - A.x) * ey - (Q.y - A.y) * ex;
-            const s = Math.abs(f1 - f0) < 1e-18 ? 0 : f0 / (f0 - f1);
-            return lerpPt(Pp, Q, s < 0 ? 0 : (s > 1 ? 1 : s));
-        };
-        const out = [];
-        for (let i = 0; i < P.length; ++i) {
-            const cur = P[i], nxt = P[(i + 1) % P.length];
-            const cin = keep(cur), nin = keep(nxt);
-            if (cin && nin) out.push(nxt);
-            else if (cin && !nin) out.push(crossPt(cur, nxt));
-            else if (!cin && nin) { out.push(crossPt(cur, nxt)); out.push(nxt); }
-        }
-        return out;
-    }
-    // Exact convex subtraction P \ E (E convex, any winding): sequential
-    // outside-clips per clip edge yield disjoint pieces; the inside-
-    // inside remnant (P inside E) is dropped by the caller.
-    function subtractPoly(P, E) {
-        const ccw = polyArea2(E) >= 0;
-        const parts = [];
-        let rest = P;
-        for (let e = 0; e < E.length; ++e) {
-            const A = E[e], B = E[(e + 1) % E.length];
-            const outside = clipHalf(rest, A, B, true, ccw);
-            if (outside.length >= 3) parts.push(outside);
-            rest = clipHalf(rest, A, B, false, ccw);
-            if (rest.length < 3) break;
-        }
-        return parts;
-    }
-    if (typeof globalThis.__UDbg !== "undefined") globalThis.__UDbg.marked = marked.filter(Boolean).length;
-    const triArea2 = (A, B, C) => (B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y);
-    tris.forEach((tr, ti) => {
-        if (!marked[ti]) {
-            // Zero-area tris (snapped duplicate segments, collapsed fans)
-            // rasterize nothing: skip them so they can never act as
-            // degenerate subtractors below.
-            if (Math.abs(triArea2(tr.v[0], tr.v[1], tr.v[2])) < 1e-9) return;
-            outIndex.push(tr.ids[0], tr.ids[1], tr.ids[2]);
-            emitInsert(tr.v, tr.box, ti);
-            return;
-        }
-        let pieces = [tr.v];
-        const box = tr.box;
-        const seen = new Set();
-        for (const k of cellsOf(box)) {
-            const cell = emitGrid.get(k);
-            if (!cell) continue;
-            for (const ei of cell) {
-                if (seen.has(ei)) continue;
-                seen.add(ei);
-                const e = emitted[ei];
-                if (e.ti === ti) continue;
-                if (e.box[0] > box[2] || e.box[2] < box[0] || e.box[1] > box[3] || e.box[3] < box[1]) continue;
-                if (Math.abs(polyArea2(e.v)) < 1e-9) continue; // degenerate subtractor: covers nothing
-                const next = [];
-                for (const P of pieces) {
-                    if (P.every((p) => inPolyOrOn(p.x, p.y, e.v))) continue; // fully covered: drop
-                    if (!polysHit(P, e.v)) { next.push(P); continue; }
-                    next.push(...subtractPoly(P, e.v));
-                    if (next.length > 64) break;
-                }
-                pieces = next;
-                if (pieces.length > 64 || !pieces.length) break;
-            }
-            if (pieces.length > 64 || !pieces.length) break;
-        }
-        for (const P of pieces) {
-            if (P.length < 3 || Math.abs(polyArea2(P)) < 1e-9) continue;
-            const ids = P.map(pushVert);
-            for (let f = 1; f < ids.length - 1; ++f) {
-                const A = P[0], B = P[f], C = P[f + 1];
-                if (Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2 < 1e-9) continue;
-                outIndex.push(ids[0], ids[f], ids[f + 1]);
-            }
-            emitInsert(P, polyBox(P), ti);
-        }
-    });
-    return { verts: vert, index: outIndex };
+    if (!(s > 0)) s = 1;
+    const w = Math.min(MAX_RT_DIM, Math.max(1, Math.ceil((bounds.x1 - bounds.x0) * s)));
+    const h = Math.min(MAX_RT_DIM, Math.max(1, Math.ceil((bounds.y1 - bounds.y0) * s)));
+    return [w, h];
 }
 
 // Updated SliderMesh class using ES6 class syntax and extending PIXI.Container.
@@ -969,27 +352,32 @@ export default class SliderMesh extends PIXI.Container {
         super();
         this.curve = curve;
         this.radius = radius;
-        const pts = curvePoints(curve.curve, radius);
-        this.bodyGeom = makeGeometry(pts.verts, pts.index);
-        this.bodyMesh = null;
-        this.bodyShader = null;
-        // Snake mesh: fixed-capacity buffers (a partial path never exceeds
-        // these bounds), refilled per frame while snaking; unused index
-        // slots stay 0 (degenerate tris rasterize nothing).
-        const n = Math.max(2, curve.curve.length);
-        this.snakeVertCap = 128 * n + 512;
-        this.snakeIdxCap = 512 * n + 2048;
-        this.snakeGeom = makeGeometry(
-            new Float32Array(this.snakeVertCap * 4),
-            new Uint32Array(this.snakeIdxCap)
-        );
-        this.snakeMesh = null;
-        this.snakeShader = null;
-        this.lastSnake = null; // "startt,endt" key of current snake contents
-        this.alpha = 1.0;
         this.tintid = tintid;
+        this.alpha = 1.0;
         this.startt = 0.0;
         this.endt = 1.0;
+
+        // Fixed-capacity prepass buffers; the full path is the largest
+        // state (partial paths are cut from the same grid).
+        this.quadCap = Math.max(1, Math.max(2, curve.curve.length) - 1);
+        const full = capsuleQuads(curve.curve, radius);
+        this.bounds = boundsOf(full.pos);
+        this.prepassGeom = makePrepassGeometry(this.quadCap);
+        this.prepassMesh = null;
+        this.prepassShader = null;
+        this.prepassRoot = null;
+
+        this.mesh = null;
+        this.meshShader = null;
+        this.meshGeom = null;
+        this.rt = null;
+        this.rtW = 0;
+        this.rtH = 0;
+
+        this.geoKey = null;  // "full" | "startt,endt": what the prepass shows
+        this.rtDirty = true; // coverage texture must be re-rendered
+        this.uploadCapsules(full);
+        this.geoKey = "full";
         this.ensureMeshes();
     }
 
@@ -997,16 +385,27 @@ export default class SliderMesh extends PIXI.Container {
     // are called on SliderMesh.prototype, mirroring the old pattern);
     // per-slider meshes build lazily once it exists.
     ensureMeshes() {
-        if (this.bodyMesh) return;
+        if (this.mesh) return;
         const P = SliderMesh.prototype;
-        if (!P.glProgram || !P.sliderTexture) return;
-        this.bodyShader = makeShader(P.sliderTexture.source);
-        this.bodyMesh = new PIXI.Mesh({ geometry: this.bodyGeom, shader: this.bodyShader });
-        this.addChild(this.bodyMesh);
-        this.snakeShader = makeShader(P.sliderTexture.source);
-        this.snakeMesh = new PIXI.Mesh({ geometry: this.snakeGeom, shader: this.snakeShader });
-        this.snakeMesh.visible = false;
-        this.addChild(this.snakeMesh);
+        if (!P.glProgram || !P.prepassProgram || !P.sliderTexture) return;
+
+        this.prepassShader = new PIXI.Shader({
+            glProgram: P.prepassProgram,
+            resources: {
+                prepassUniforms: makePrepassUniforms(this.bounds, this.radius),
+            },
+        });
+        this.prepassMesh = new PIXI.Mesh({
+            geometry: this.prepassGeom,
+            shader: this.prepassShader,
+        });
+        // MAX blending merges overlapping capsules into one coverage
+        // field (ONE/ONE/MAX); the stage never sees this container.
+        this.prepassMesh.blendMode = 'max';
+        this.prepassRoot = new PIXI.Container();
+        this.prepassRoot.addChild(this.prepassMesh);
+
+        this.ensureRenderTarget();
     }
 
     initialize(colors, radius, transform, SliderTrackOverride, SliderBorder) {
@@ -1023,6 +422,9 @@ export default class SliderMesh extends PIXI.Container {
         if (!P.glProgram) {
             P.glProgram = new PIXI.GlProgram({ name: 'slider', vertex: vertexSrc, fragment: fragmentSrc });
         }
+        if (!P.prepassProgram) {
+            P.prepassProgram = new PIXI.GlProgram({ name: 'slider-prepass', vertex: prepassVertexSrc, fragment: prepassFragmentSrc });
+        }
         P.baseTransform = transform;
     }
 
@@ -1030,101 +432,160 @@ export default class SliderMesh extends PIXI.Container {
         SliderMesh.prototype.baseTransform = transform;
     }
 
-    // Push per-frame state (called every frame from updateSlider):
-    // full sliders show the static unioned body; while snaking, the body
-    // hides and the snake mesh shows the rebuilt partial path instead.
-    // Both meshes always draw whole (dt=0, ot=1): the snake's shape comes
-    // from rebuilt geometry, never from shader clipping.
+    // Push per-frame state (called every frame from updateSlider): the
+    // visibility/geometry choice for startt/endt, then the coverage
+    // re-render only when the prepass actually changed. The playfield
+    // transform is applied by the composite vertex shader, so a resize
+    // never needs a new coverage texture unless its pixel size changed.
     sync() {
+        if (this.destroyed) return;
         this.ensureMeshes();
         const T = SliderMesh.prototype.baseTransform;
-        if (!T || !this.bodyShader) return;
-        const pushShared = (u) => {
-            u.alpha = this.alpha;
-            u.texturepos = this.tintid / this.ncolors;
-            u.dx = T.dx;
-            u.dy = T.dy;
-            u.ox = T.ox;
-            u.oy = T.oy;
-        };
-        const bu = this.bodyShader.resources.sliderUniforms.uniforms;
-        const su = this.snakeShader.resources.sliderUniforms.uniforms;
-        pushShared(bu);
-        pushShared(su);
-        bu.dt = 0;
-        bu.ot = 1;
-        su.dt = 0;
-        su.ot = 1;
+        if (!T || !this.mesh) return;
 
+        let show = true;
+        let fromT = null, toT = null; // fromT === null: the full path
         if (this.startt === 0.0 && this.endt === 1.0) {
-            this.bodyMesh.visible = true;
-            this.snakeMesh.visible = false;
-            this.lastSnake = null;
+            // complete slider: full path
         } else if (this.endt === 1.0) {
-            if (this.startt !== 1.0) {
-                this.rebuildSnake(this.startt, 1.0);
-                this.bodyMesh.visible = false;
-                this.snakeMesh.visible = true;
-            } else {
-                this.bodyMesh.visible = false;
-                this.snakeMesh.visible = false;
-                this.lastSnake = null;
-            }
+            if (this.startt !== 1.0) { fromT = this.startt; toT = 1.0; }
+            else show = false;
         } else if (this.startt === 0.0) {
-            if (this.endt !== 0.0) {
-                this.rebuildSnake(0.0, this.endt);
-                this.bodyMesh.visible = false;
-                this.snakeMesh.visible = true;
-            } else {
-                this.bodyMesh.visible = false;
-                this.snakeMesh.visible = false;
-                this.lastSnake = null;
-            }
+            if (this.endt !== 0.0) { fromT = 0.0; toT = this.endt; }
+            else show = false;
         } else {
             console.error("can't snake both end of slider");
+            show = false;
+        }
+        this.mesh.visible = show;
+        if (!show) return;
+
+        if (this.rebuildGeometry(fromT, toT)) this.rtDirty = true;
+        this.ensureRenderTarget();
+
+        const u = this.meshShader.resources.sliderUniforms.uniforms;
+        u.alpha = this.alpha;
+        // texel center of this slider's LUT row (linear filtering would
+        // otherwise blend it half-way into the neighboring combo row)
+        u.texturepos = (this.tintid + 0.5) / SliderMesh.prototype.ncolors;
+        u.dx = T.dx;
+        u.dy = T.dy;
+        u.ox = T.ox;
+        u.oy = T.oy;
+
+        if (this.rtDirty) {
+            const renderer = getRenderer();
+            if (renderer) {
+                renderer.render({
+                    container: this.prepassRoot,
+                    target: this.rt,
+                    clear: true,
+                    clearColor: 0x000000,
+                });
+                this.rtDirty = false;
+            }
         }
     }
 
-    // Rebuild the snake mesh for [fromT, toT] unless it already shows it.
-    // No-op if the partial path would overflow the fixed buffers (cannot
-    // happen within the capacity bounds; keeps the previous frame).
-    rebuildSnake(fromT, toT) {
-        const key = fromT + "," + toT;
-        if (key === this.lastSnake) return;
-        const out = curvePoints(partialPoints(this.curve.curve, fromT, toT), this.radius, true);
-        const nv = out.verts.length / 4;
-        if (nv > this.snakeVertCap || out.index.length > this.snakeIdxCap) return;
-        const pos = this.snakeGeom.getBuffer('position').data;
-        for (let i = 0; i < out.verts.length; ++i) pos[i] = out.verts[i];
-        this.snakeGeom.getBuffer('position').update();
-        const idx = this.snakeGeom.indexBuffer.data;
-        let i = 0;
-        for (; i < out.index.length; ++i) idx[i] = out.index[i];
-        for (; i < idx.length; ++i) idx[i] = 0;
-        this.snakeGeom.indexBuffer.update();
-        this.lastSnake = key;
+    // Show the prepass for [fromT, toT] (null = full path) unless it
+    // already shows it; returns true if the geometry changed.
+    rebuildGeometry(fromT, toT) {
+        const key = fromT === null ? "full" : fromT + "," + toT;
+        if (key === this.geoKey) return false;
+        const pts = fromT === null ? this.curve.curve
+            : partialPoints(this.curve.curve, fromT, toT);
+        const out = capsuleQuads(pts, this.radius);
+        // Cannot happen within the capacity bounds (a partial path never
+        // exceeds the grid it is cut from); keeps the previous frame.
+        if (out.quads > this.quadCap) return false;
+        this.uploadCapsules(out);
+        this.geoKey = key;
+        return true;
+    }
+
+    uploadCapsules(out) {
+        const g = this.prepassGeom;
+        const pos = g.getBuffer('position').data;
+        const segA = g.getBuffer('segA').data;
+        const segB = g.getBuffer('segB').data;
+        pos.set(out.pos);
+        segA.set(out.segA);
+        segB.set(out.segB);
+        g.getBuffer('position').update();
+        g.getBuffer('segA').update();
+        g.getBuffer('segB').update();
+        const idx = g.indexBuffer.data;
+        idx.set(out.index);
+        idx.fill(0, out.index.length); // unused slots degenerate to tris of one vertex
+        g.indexBuffer.update();
+    }
+
+    // (Re)create the coverage texture when its pixel size changes — on
+    // the first sync with a live renderer and on window/resolution
+    // changes. The composite binds the texture, so it is rebuilt too.
+    ensureRenderTarget() {
+        const P = SliderMesh.prototype;
+        const [w, h] = coverageSize(this.bounds, getRenderer(), P.baseTransform);
+        if (this.rt && this.rtW === w && this.rtH === h) return;
+        if (this.rt) {
+            try { this.rt.destroy(true); } catch (e) { /* ignore */ }
+        }
+        this.rt = PIXI.RenderTexture.create({ width: w, height: h });
+        this.rtW = w;
+        this.rtH = h;
+        this.buildComposite();
+        this.rtDirty = true;
+    }
+
+    // The visible pass: bounds quad sampling the coverage texture
+    // through the gradient LUT. Rebuilt whenever the coverage texture is
+    // (the shader owns the texture reference).
+    buildComposite() {
+        const P = SliderMesh.prototype;
+        const drop = (mesh, shader, geom) => {
+            try { if (mesh) this.removeChild(mesh); } catch (e) { /* ignore */ }
+            try { if (mesh) mesh.destroy(); } catch (e) { /* ignore */ }
+            try { if (shader) shader.destroy(); } catch (e) { /* ignore */ }
+            try { if (geom) geom.destroy(); } catch (e) { /* ignore */ }
+        };
+        drop(this.mesh, this.meshShader, this.meshGeom);
+        this.mesh = null;
+        this.meshShader = null;
+        this.meshGeom = null;
+
+        this.meshGeom = makeCompositeGeometry(this.bounds);
+        this.meshShader = new PIXI.Shader({
+            glProgram: P.glProgram,
+            resources: {
+                sliderUniforms: makeCompositeUniforms(),
+                uCoverage: this.rt.source,
+                uSampler2: P.sliderTexture.source,
+            },
+        });
+        this.mesh = new PIXI.Mesh({ geometry: this.meshGeom, shader: this.meshShader });
+        this.mesh.visible = false;
+        this.addChild(this.mesh);
     }
 
     destroy(options) {
-        try {
-            if (this.bodyGeom) this.bodyGeom.destroy();
-        } catch (e) { /* ignore */ }
-        this.bodyGeom = null;
-        try {
-            if (this.bodyShader) this.bodyShader.destroy();
-        } catch (e) { /* ignore */ }
-        this.bodyShader = null;
-        this.bodyMesh = null;
-        try {
-            if (this.snakeGeom) this.snakeGeom.destroy();
-        } catch (e) { /* ignore */ }
-        this.snakeGeom = null;
-        try {
-            if (this.snakeShader) this.snakeShader.destroy();
-        } catch (e) { /* ignore */ }
-        this.snakeShader = null;
-        this.snakeMesh = null;
-        this.lastSnake = null;
+        const drop = (fn) => { try { fn(); } catch (e) { /* ignore */ } };
+        drop(() => { if (this.mesh) this.removeChild(this.mesh); });
+        drop(() => { if (this.mesh) this.mesh.destroy(); });
+        this.mesh = null;
+        drop(() => { if (this.meshShader) this.meshShader.destroy(); });
+        this.meshShader = null;
+        drop(() => { if (this.meshGeom) this.meshGeom.destroy(); });
+        this.meshGeom = null;
+        drop(() => { if (this.prepassMesh) this.prepassMesh.destroy(); });
+        this.prepassMesh = null;
+        drop(() => { if (this.prepassRoot) this.prepassRoot.destroy(); });
+        this.prepassRoot = null;
+        drop(() => { if (this.prepassShader) this.prepassShader.destroy(); });
+        this.prepassShader = null;
+        drop(() => { if (this.prepassGeom) this.prepassGeom.destroy(); });
+        this.prepassGeom = null;
+        drop(() => { if (this.rt) this.rt.destroy(true); }); // true: free the GPU source too
+        this.rt = null;
         super.destroy(options);
     }
 }
