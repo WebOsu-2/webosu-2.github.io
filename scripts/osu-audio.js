@@ -1,5 +1,53 @@
 // Audio engine (ES module). Relies on browser globals: AudioContext,
 // document, game (settings), mp3Parser, showErrorToast.
+import SignalsmithStretch from './lib/SignalsmithStretch.mjs';
+
+// Load the same ES module in the AudioWorklet realm. Besides avoiding a
+// second generated copy, this keeps worklet loading compatible with sites
+// whose CSP disallows executable blob: URLs.
+SignalsmithStretch.moduleUrl = new URL('./lib/SignalsmithStretch.mjs', import.meta.url).href;
+
+const PITCH_STRETCH_TIMEOUT_MS = 10000;
+
+function withTimeout(promise, timeoutMs, label, onLateResolve) {
+  let timedOut = false;
+  let timer;
+  const observed = Promise.resolve(promise);
+  observed.then(value => {
+    if (timedOut && typeof onLateResolve === 'function') {
+      try { onLateResolve(value); } catch (e) { /* ignore late cleanup failure */ }
+    }
+  }, () => { /* the raced path reports the original rejection */ });
+  return new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      reject(new Error(`${label} timed out after ${timeoutMs} ms`));
+    }, timeoutMs);
+    observed.then(value => {
+      if (timedOut) return;
+      clearTimeout(timer);
+      resolve(value);
+    }, error => {
+      if (timedOut) return;
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
+function releaseStretchNode(node) {
+  if (!node) return;
+  try { node.disconnect(); } catch (e) {}
+  try { node.port.close(); } catch (e) {}
+}
+
+function reportPitchFallback(reason) {
+  console.warn("Pitch-preserving rate adjustment unavailable; falling back.", reason || "");
+  if (typeof showErrorToast === 'function') {
+    showErrorToast("Pitch-preserving speed is unavailable in this browser; DT/HT audio will change pitch.");
+  }
+}
+
 function syncStream(node) {
     // https://stackoverflow.com/questions/10365335/decodeaudiodata-returning-a-null-error
     var buf8 = new Uint8Array(node.buf);
@@ -111,7 +159,121 @@ function syncStream(node) {
     this.audio = audioContext;
     this.gain = this.audio.createGain();
     this.gain.connect(this.audio.destination);
-    this.playbackRate = 1.0;
+    this.playbackRate = Number(game.playbackRate) > 0 ? Number(game.playbackRate) : 1;
+    this.preservePitch = game.preservePitch !== false;
+    this.duration = null;
+    this.stretch = null;
+    this.usesTimeStretch = false;
+    this.pitchPreserved = this.playbackRate === 1
+      ? true
+      : this.preservePitch ? null : false;
+    this._stretchConnected = false;
+    this._stretchStopTimer = null;
+    this._sourceGeneration = 0;
+
+    this._configureSource = function (source) {
+      source.playbackRate.value = self.playbackRate;
+    };
+    this._prepareRatePlayback = async function () {
+      if (!self.preservePitch || self.playbackRate === 1) return;
+      if (!self.audio.audioWorklet || typeof AudioWorkletNode === "undefined") {
+        self.pitchPreserved = false;
+        reportPitchFallback("AudioWorklet is unavailable");
+        return;
+      }
+      let stretch = null;
+      try {
+        const channelCount = Math.max(1, self.decoded.numberOfChannels || 1);
+        stretch = await withTimeout(
+          SignalsmithStretch(self.audio, {
+            // Keep one input slot for the processor's inactive-path
+            // contract, but explicitly select its uploaded-buffer mode so an
+            // unconnected/silent input is never mistaken for live audio.
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            outputChannelCount: [channelCount],
+            processorOptions: { internalBufferMode: true },
+          }),
+          PITCH_STRETCH_TIMEOUT_MS,
+          "Pitch-preserving audio initialization",
+          releaseStretchNode
+        );
+        const channels = [];
+        const transfer = [];
+        for (let channel = 0; channel < channelCount; ++channel) {
+          const samples = self.decoded.getChannelData(channel);
+          channels.push(samples);
+          if (!transfer.includes(samples.buffer)) transfer.push(samples.buffer);
+        }
+        stretch.connect(self.gain);
+        self._stretchConnected = true;
+        // Transfer ownership of the decoded sample storage into the worklet.
+        // Structured cloning would retain a second full-song copy in memory.
+        await withTimeout(
+          stretch.addBuffers(channels, transfer),
+          PITCH_STRETCH_TIMEOUT_MS,
+          "Pitch-preserving audio buffer upload"
+        );
+        self.stretch = stretch;
+        self.usesTimeStretch = true;
+        self.pitchPreserved = true;
+        self.decoded = null;
+      } catch (e) {
+        releaseStretchNode(stretch);
+        self.stretch = null;
+        self.usesTimeStretch = false;
+        self.pitchPreserved = false;
+        self._stretchConnected = false;
+        reportPitchFallback(e);
+      }
+    };
+    this._startSource = function (when, offset) {
+      if (self.stretch) {
+        if (!self._stretchConnected) {
+          self.stretch.connect(self.gain);
+          self._stretchConnected = true;
+        }
+        self.source = self.stretch;
+        // Signalsmith 1.3.2's start(duration) path can drop the active
+        // segment when AudioContext time has already reached `when`. Schedule
+        // an independent wall-clock stop instead; it also lets pause/seek
+        // cancel the stop without corrupting the reusable node.
+        self.source.start(when, offset, undefined, self.playbackRate);
+        if (Number.isFinite(self.duration)) {
+          const remaining = Math.max(0, self.duration - offset) / self.playbackRate;
+          const delay = Math.max(0, when - self.audio.currentTime) + remaining;
+          const generation = ++self._sourceGeneration;
+          self._stretchStopTimer = setTimeout(() => {
+            self._stretchStopTimer = null;
+            if (generation !== self._sourceGeneration ||
+                self.source !== self.stretch || !self.playing) return;
+            self.position = self.duration;
+            self.finish();
+          }, delay * 1000);
+          if (self._stretchStopTimer && self._stretchStopTimer.unref)
+            self._stretchStopTimer.unref();
+        }
+        return;
+      }
+      self.source = self.audio.createBufferSource();
+      self._configureSource(self.source);
+      self.source.buffer = self.decoded;
+      self.source.connect(self.gain);
+      self.source.start(when, offset);
+    };
+    this._stopSource = function () {
+      if (self._stretchStopTimer) {
+        try { clearTimeout(self._stretchStopTimer); } catch (e) {}
+        self._stretchStopTimer = null;
+      }
+      ++self._sourceGeneration;
+      if (!self.source) return;
+      try { self.source.onended = null; } catch (e) {}
+      try { self.source.stop(); } catch (e) {}
+      if (self.source !== self.stretch) {
+        try { self.source.disconnect(); } catch (e) {}
+      }
+    };
     this.posoffset = 0;
 
     let t = preprocAudio(filename, buffer);
@@ -122,7 +284,8 @@ function syncStream(node) {
     // on high-latency devices (the "every song out of sync in 2.0" reports).
     try {
       var outLat = (self.audio.outputLatency || 0) + (self.audio.baseLatency || 0);
-      if (outLat > 0 && outLat < 1) self._outputLatencyMs = outLat * 1000;
+      if (outLat > 0 && outLat < 1)
+        self._outputLatencyMs = outLat * 1000 * self.playbackRate;
       else self._outputLatencyMs = 0;
     } catch (e) { self._outputLatencyMs = 0; }
     if (self._outputLatencyMs) this.posoffset += self._outputLatencyMs;
@@ -135,10 +298,11 @@ function syncStream(node) {
         node.buf,
         function (decoded) {
           self.decoded = decoded;
+          self.duration = Number(decoded.duration);
           console.log("Song decoded");
-          if (typeof callback !== "undefined") {
-            callback(self);
-          }
+          self._prepareRatePlayback().then(() => {
+            if (typeof callback !== "undefined") callback(self);
+          });
         },
         function (err) {
           console.log("Error");
@@ -212,67 +376,41 @@ function syncStream(node) {
       }
       // stop any leaked previous source before starting a new one
       // (prevents overlapping/echoing audio that required a new tab to fix)
-      if (self.source) {
-        try { self.source.onended = null; } catch (e) {}
-        try { self.source.stop(); } catch (e) {}
-        try { self.source.disconnect(); } catch (e) {}
-        self.source = null;
-      }
+      self._stopSource();
+      self.source = null;
       self.playing = true;
-      self.source = self.audio.createBufferSource();
-      self.source.playbackRate.value = self.playbackRate;
-      self.source.buffer = self.decoded;
-      self.source.connect(self.gain);
       self.started = self.audio.currentTime;
       if (wait > 0) {
         self.position = -wait / 1000;
-        self.source.start(
+        self._startSource(
           self.audio.currentTime + wait / 1000 / self.playbackRate,
           0
         );
       } else {
-        self.source.start(0, Math.max(0, self.position));
+        self._startSource(self.audio.currentTime, Math.max(0, self.position));
       }
     };
 
     this.stop = function stop() {
-      try {
-        if (self.source) {
-          try { self.source.onended = null; } catch (e) {}
-          try { self.source.stop(); } catch (e) {}
-          try { self.source.disconnect(); } catch (e) {}
-        }
-      } catch (e) { /* ignore */ }
+      try { self._stopSource(); } catch (e) { /* ignore */ }
       self.source = null;
       self.playing = false;
     };
 
     // Jump audio clock to ms (used by the Skip-intro button).
     this.skipTo = function skipTo(ms) {
-      if (!self.decoded) return false;
+      if (!self.decoded && !self.stretch) return false;
       var sec = Math.max(0, ms / 1000);
-      try {
-        if (sec >= self.decoded.duration) return false;
-      } catch (e) { /* ignore duration check */ }
+      if (Number.isFinite(self.duration) && sec >= self.duration) return false;
       var wasPlaying = self.playing;
-      try {
-        if (self.source) {
-          try { self.source.onended = null; } catch (e) {}
-          try { self.source.stop(); } catch (e) {}
-          try { self.source.disconnect(); } catch (e) {}
-        }
-      } catch (e) { /* ignore */ }
+      try { self._stopSource(); } catch (e) { /* ignore */ }
       self.source = null;
       self.position = sec;
       if (wasPlaying) {
         try {
           self.playing = true;
-          self.source = self.audio.createBufferSource();
-          self.source.playbackRate.value = self.playbackRate;
-          self.source.buffer = self.decoded;
-          self.source.connect(self.gain);
           self.started = self.audio.currentTime;
-          self.source.start(0, sec);
+          self._startSource(self.audio.currentTime, sec);
         } catch (e) {
           console.error("skipTo failed", e);
           return false;
@@ -281,19 +419,33 @@ function syncStream(node) {
       return true;
     };
 
+    this.finish = function finish() {
+      this.stop();
+      if (this.stretch) {
+        try { this.stretch.disconnect(); } catch (e) {}
+      }
+      this._stretchConnected = false;
+    };
+
+    this.dispose = function dispose() {
+      this.finish();
+      if (this.stretch) {
+        try { this.stretch.port.close(); } catch (e) {}
+        this.stretch = null;
+      }
+      this.usesTimeStretch = false;
+      this.decoded = null;
+      this.duration = null;
+      try { this.gain.disconnect(); } catch (e) {}
+    };
+
     // return value true: success
     this.pause = function pause() {
       if (!self.playing) return false;
       try {
         self.position = self._getPosition();
       } catch (e) { self.position = self.position || 0; }
-      try {
-        if (self.source) {
-          try { self.source.onended = null; } catch (e) {}
-          try { self.source.stop(); } catch (e) {}
-          try { self.source.disconnect(); } catch (e) {}
-        }
-      } catch (e) { /* ignore */ }
+      try { self._stopSource(); } catch (e) { /* ignore */ }
       self.source = null;
       self.playing = false;
       return true;

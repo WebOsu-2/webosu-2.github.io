@@ -25,6 +25,8 @@ function sanitizeSettings(s) {
   const numericKeys = ["dim", "blur", "cursorsize", "mastervolume",
     "effectvolume", "musicvolume", "audiooffset",
     "K1keycode", "K2keycode", "Kpausekeycode", "Kpause2keycode"];
+  const modKeys = ["easy", "hardrock", "doubletime", "nightcore",
+    "halftime", "daycore", "hidden", "autoplay", "relax", "autopilot"];
   const out = {};
   if (!s || typeof s !== "object") return out;
   for (const k of Object.keys(s)) {
@@ -33,10 +35,26 @@ function sanitizeSettings(s) {
       const n = parseFloat(s[k]);
       if (Number.isFinite(n)) out[k] = n;
       // else: fall back to the default already in gamesettings
+    } else if (modKeys.includes(k)) {
+      out[k] = s[k] === true;
     } else {
       out[k] = s[k];
     }
   }
+  // Old/corrupt local storage may contain incompatible combinations. Keep
+  // one deterministic valid mod so both the UI and gameplay agree.
+  if (out.easy && out.hardrock) out.easy = false;
+  const rateMod = ["doubletime", "nightcore", "halftime", "daycore"].find(k => out[k]);
+  if (rateMod) {
+    out.doubletime = rateMod === "doubletime";
+    out.nightcore = rateMod === "nightcore";
+    out.halftime = rateMod === "halftime";
+    out.daycore = rateMod === "daycore";
+  }
+  const inputMode = ["autoplay", "relax", "autopilot"].find(k => out[k]);
+  out.autoplay = inputMode === "autoplay";
+  out.relax = inputMode === "relax";
+  out.autopilot = inputMode === "autopilot";
   return out;
 }
 function loadFromLocal() {

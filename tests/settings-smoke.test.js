@@ -82,6 +82,30 @@ test("settings: rate mods are mutually exclusive", () => {
   H.eq(JSON.parse(window.localStorage.getItem("osugamesettings")).halftime, true, "persisted");
 });
 
+test("settings: corrupt stored mod combinations are normalized", () => {
+  const clean = sanitizeSettings({
+    easy: true,
+    hardrock: true,
+    doubletime: true,
+    halftime: true,
+    daycore: true,
+    autoplay: true,
+    relax: true,
+    autopilot: true,
+    hidden: "false",
+  });
+  H.eq(clean.easy, false, "EZ removed from invalid EZ+HR");
+  H.eq(clean.hardrock, true, "HR retained");
+  H.eq(clean.doubletime, true, "first valid rate mod retained");
+  H.eq(clean.nightcore, false, "NC cleared");
+  H.eq(clean.halftime, false, "HT cleared");
+  H.eq(clean.daycore, false, "DC cleared");
+  H.eq(clean.autoplay, true, "AT retained from an invalid input-mode state");
+  H.eq(clean.relax, false, "RL cleared");
+  H.eq(clean.autopilot, false, "AP cleared");
+  H.eq(clean.hidden, false, "non-boolean mod flags are not truthy");
+});
+
 test("settings: cursor visual toggles persist", () => {
   setOptionPanel();
   const trail = document.getElementById("cursortrail-check");

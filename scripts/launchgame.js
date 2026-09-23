@@ -196,7 +196,8 @@ async function launchOSU(osu, beatmapid, version) {
     try {
       if (window.playback && window.playback.osu && window.playback.osu.audio) {
         var a = window.playback.osu.audio;
-        if (typeof a.stop === "function") a.stop();
+        if (typeof a.dispose === "function") a.dispose();
+        else if (typeof a.stop === "function") a.stop();
         else if (typeof a.pause === "function") a.pause();
       }
     } catch (e) { /* ignore */ }
@@ -232,6 +233,7 @@ async function launchOSU(osu, beatmapid, version) {
     game.trailTex = null;
     window.app.destroy(true, { children: true, texture: false });
     window.app = null;
+    if (window.playback === playback) window.playback = null;
     gameLoop = null;
     window.cancelAnimationFrame(window.animationRequestID);
   };

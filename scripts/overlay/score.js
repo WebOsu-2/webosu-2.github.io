@@ -166,6 +166,7 @@ import * as PIXI from '../lib/pixi.mjs';
                 this.fullcombo = false;
                 if (oldCombo > 20) {
                     window.game.sampleComboBreak.volume = window.game.masterVolume * window.game.effectVolume;
+                    window.game.sampleComboBreak.playbackRate = window.game.playbackRate || 1;
                     window.game.sampleComboBreak.play();
                 }
             }

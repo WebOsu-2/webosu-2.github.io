@@ -15,6 +15,7 @@ import LoadingMenu from './overlay/loading.js';
 import BreakOverlay from './overlay/break.js';
 import ProgressOverlay from './overlay/progress.js';
 import ErrorMeterOverlay from './overlay/hiterrormeter.js';
+import { resolveGameplayMods, cloneHitForMods } from './mods.js';
         function clamp01(a) {
             return Math.min(1, Math.max(0, a));
         }
@@ -37,38 +38,42 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             self.background = null;
             self.started = false;
             self.upcomingHits = [];
-            // audio rate FIRST: everything below (including DT/NC chart
-            // scaling) depends on it. Reading self.playbackRate before this
-            // assignment yields undefined, and scaling by undefined poisons
-            // every hit time with NaN on first launch (a stale value from a
-            // previous run is why retrying appeared to fix it).
-            self.playbackRate = 1.0;
-            // Rate mods are mutually exclusive (enforced by the settings
-            // UI); first match wins so a stale double-enable can never
-            // stack rates. The song clock (audio position x rate) and the
-            // unscaled chart stay in song time together at any rate, so no
-            // chart rescaling is needed (or valid) here.
-            if (self.game.nightcore || self.game.doubletime) self.playbackRate *= 1.5;
-            else if (self.game.daycore || self.game.halftime) self.playbackRate *= 0.75;
-            // creating a copy of hitobjects
+            // Resolve gameplay mods before cloning chart objects.
+            // Rate mods advance the song clock (audio position x playback
+            // rate), so the decoded chart intentionally remains in song time.
+            // Rescaling it as well applies the rate twice and was the source
+            // of the old DT/NC drift.
+            self.mods = resolveGameplayMods(game);
+            self.playbackRate = self.mods.playbackRate;
+            self.rateMod = self.mods.rateMod;
+            self.modHardrock = self.mods.hardrock;
+            self.modEasy = self.mods.easy;
+            // Keep summaries/input modes consistent even if persisted settings
+            // contain an invalid stale combination.
+            game.easy = self.modEasy;
+            game.hardrock = self.modHardrock;
+            for (const flag of ['doubletime', 'nightcore', 'halftime', 'daycore'])
+                game[flag] = self.rateMod === flag;
             self.hits = [];
             _.each(self.track.hitObjects, function (o) {
-                self.hits.push(Object.assign({}, o));
+                self.hits.push(cloneHitForMods(o, self.mods));
             });
             if (!self.hits.length) {
                 throw new Error("This difficulty has no playable hit objects.");
             }
-            // timeRate stays for wall-clock consumers (background video
-            // offset); gameplay itself runs on the song clock with the
-            // decoded (unscaled) chart at any rate.
             self.timeRate = self.playbackRate;
+            game.playbackRate = self.playbackRate;
+            game.preservePitch = self.mods.preservePitch;
             self.offset = 0;
             self.currentHitIndex = 0; // index for all hit objects
             self.ended = false;
             // mods
-            self.autoplay = game.autoplay;
-            self.autopilot = game.autopilot;
-            self.relax = game.relax;
+            self.autoplay = self.mods.inputMode === 'autoplay';
+            self.autopilot = self.mods.inputMode === 'autopilot';
+            self.relax = self.mods.inputMode === 'relax';
+            game.autoplay = self.autoplay;
+            game.autopilot = self.autopilot;
+            game.relax = self.relax;
             self.modhidden = game.hidden;
             self.hideNumbers = game.hideNumbers;
             self.hideGreat = game.hideGreat;
@@ -182,13 +187,13 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             this.CS = track.difficulty.CircleSize;
             this.AR = track.difficulty.ApproachRate;
             this.HP = track.difficulty.HPDrainRate;
-            if (game.hardrock) {
+            if (self.modHardrock) {
                 this.OD = Math.min(this.OD * 1.4, 10);
                 this.CS = Math.min(this.CS * 1.3, 10);
                 this.AR = Math.min(this.AR * 1.4, 10);
                 this.HP = Math.min(this.HP * 1.4, 10);
             }
-            if (game.easy) {
+            if (self.modEasy) {
                 this.OD = this.OD * 0.5;
                 this.CS = this.CS * 0.5;
                 this.AR = this.AR * 0.5;
@@ -196,10 +201,10 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             }
 
             let scoreModMultiplier = 1.0;
-            if (game.easy) scoreModMultiplier *= 0.50;
-            if (game.daycore || game.halftime) scoreModMultiplier *= 0.30;
-            if (game.hardrock) scoreModMultiplier *= 1.06;
-            if (game.nightcore || game.doubletime) scoreModMultiplier *= 1.12;
+            if (self.modEasy) scoreModMultiplier *= 0.50;
+            if (self.rateMod === 'daycore' || self.rateMod === 'halftime') scoreModMultiplier *= 0.30;
+            if (self.modHardrock) scoreModMultiplier *= 1.06;
+            if (self.rateMod === 'nightcore' || self.rateMod === 'doubletime') scoreModMultiplier *= 1.12;
             if (game.hidden) scoreModMultiplier *= 1.06;
 
             self.scoreOverlay = new ScoreOverlay({ width: game.window.innerWidth, height: game.window.innerHeight }, this.HP, scoreModMultiplier);
@@ -574,6 +579,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                             const el = document.createElement("video");
                             el.muted = true;
                             el.playsInline = true;
+                            el.playbackRate = self.playbackRate;
                             el.preload = "auto";
                             el.src = url;
                             const cleanup = function () {
@@ -610,8 +616,9 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                                     my.bgVideo = {
                                         el: el,
                                         url: url,
-                                        // map ms -> audio clock (DT/NC scale the chart)
-                                        offset: (self.track.video.offset || 0) / (self.timeRate || 1),
+                                        // Audio position and video currentTime
+                                        // both use the unscaled song timeline.
+                                        offset: self.track.video.offset || 0,
                                     };
                                     my.syncVideoBG(true);
                                 } catch (e) {
@@ -990,6 +997,11 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             // use separate timing for hitsounds, since volume may change inside a slider or spinner
             // note: time is expected time of object hit, not real time
             this.curtimingid = 0;
+            function playRateAdjustedSample(sample) {
+                if (!sample) return;
+                sample.playbackRate = self.playbackRate;
+                sample.play();
+            }
             this.playTicksound = function playTicksound(hit, time) {
                 while (this.curtimingid + 1 < this.track.timingPoints.length && this.track.timingPoints[this.curtimingid + 1].offset <= time)
                     this.curtimingid++;
@@ -999,7 +1011,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 let volume = self.game.masterVolume * self.game.effectVolume * (hit.hitSample.volume || timing.volume) / 100;
                 let defaultSet = timing.sampleSet || self.game.sampleSet;
                 self.game.sample[defaultSet].slidertick.volume = volume;
-                self.game.sample[defaultSet].slidertick.play();
+                playRateAdjustedSample(self.game.sample[defaultSet].slidertick);
             };
             this.playHitsound = function playHitsound(hit, id, time) {
                 while (this.curtimingid + 1 < this.track.timingPoints.length && this.track.timingPoints[this.curtimingid + 1].offset <= time)
@@ -1012,18 +1024,18 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 function playHit(bitmask, normalSet, additionSet) {
                     // The normal sound is always played
                     self.game.sample[normalSet].hitnormal.volume = volume;
-                    self.game.sample[normalSet].hitnormal.play();
+                    playRateAdjustedSample(self.game.sample[normalSet].hitnormal);
                     if (bitmask & 2) {
                         self.game.sample[additionSet].hitwhistle.volume = volume;
-                        self.game.sample[additionSet].hitwhistle.play();
+                        playRateAdjustedSample(self.game.sample[additionSet].hitwhistle);
                     }
                     if (bitmask & 4) {
                         self.game.sample[additionSet].hitfinish.volume = volume;
-                        self.game.sample[additionSet].hitfinish.play();
+                        playRateAdjustedSample(self.game.sample[additionSet].hitfinish);
                     }
                     if (bitmask & 8) {
                         self.game.sample[additionSet].hitclap.volume = volume;
-                        self.game.sample[additionSet].hitclap.play();
+                        playRateAdjustedSample(self.game.sample[additionSet].hitclap);
                     }
                 }
                 if (hit.type == 'circle' || hit.type == 'spinner') {
@@ -1062,7 +1074,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
             // hit object updating
             var futuremost = 0, current = 0;
             if (self.hits.length > 0) {
-                // scaled copy (matches the audio clock under DT/NC)
+                // gameplay clock advances at the audio playback rate
                 futuremost = self.hits[0].time;
             }
             var waitinghitid = 0; // the first object that's not ended
@@ -1570,6 +1582,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                     if (!this.ended) {
                         this.ended = true;
                         this.pause = function () { };
+                        try { if (self.osu.audio && self.osu.audio.finish) self.osu.audio.finish(); } catch (e) { /* ignore */ }
                         this.scoreOverlay.visible = false;
                         this.scoreOverlay.showSummary(this.track.metadata, this.errorMeter.record, this.retry, this.quit);
                     }
@@ -1630,12 +1643,14 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 self.started = true;
                 self.osu.audio.gain.gain.value = self.game.musicVolume * self.game.masterVolume;
                 self.osu.audio.playbackRate = self.playbackRate;
+                self.osu.audio.preservePitch = self.mods.preservePitch;
                 const leadin = self.backgroundFadeTime + self.wait;
                 self.osu.audio.play(leadin);
                 // start the video with the audio (per-frame sync corrects drift)
                 try { if (self._videoTimer) clearTimeout(self._videoTimer); } catch (e) {}
                 if (self.bgVideo || self.game.backgroundVideo) {
-                    self._videoTimer = setTimeout(function () { self.syncVideoBG(true); }, Math.max(0, leadin));
+                    self._videoTimer = setTimeout(function () { self.syncVideoBG(true); },
+                        Math.max(0, leadin / self.playbackRate));
                 }
             };
 
@@ -1659,6 +1674,7 @@ import ErrorMeterOverlay from './overlay/hiterrormeter.js';
                 }
                 console.log("playback: quiting");
                 self.destroy();
+                try { if (self.osu.audio && self.osu.audio.dispose) self.osu.audio.dispose(); } catch (e) {}
                 if (window.quitGame)
                     window.quitGame();
             }

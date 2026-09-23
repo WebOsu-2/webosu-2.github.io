@@ -332,20 +332,110 @@ test("headless: rate mods keep song-time chart, set playback rate", async () => 
   const raw0 = track.hitObjects[0].time;
   H.assert(Number.isFinite(raw0), "fixture has timed objects");
   const cases = [
-    [{}, 1.0],
-    [{ doubletime: true }, 1.5],
-    [{ nightcore: true }, 1.5],
-    [{ halftime: true }, 0.75],
-    [{ daycore: true }, 0.75],
+    [{}, 1.0, true, 1.0],
+    [{ doubletime: true }, 1.5, true, 1.12],
+    [{ nightcore: true }, 1.5, false, 1.12],
+    [{ halftime: true }, 0.75, true, 0.30],
+    [{ daycore: true }, 0.75, false, 0.30],
+    [{ easy: true }, 1.0, true, 0.50],
+    [{ hardrock: true }, 1.0, true, 1.06],
+    [{ hidden: true }, 1.0, true, 1.06],
+    [{ hardrock: true, doubletime: true }, 1.5, true, 1.06 * 1.12],
   ];
-  for (const [flags, rate] of cases) {
+  for (const [flags, rate, preservePitch, scoreMultiplier] of cases) {
     const game = makeGame(flags);
     game.stage = new PIXI.Container();
     const pb = new Playback(game, osu, track);
     H.eq(pb.playbackRate, rate, `rate for ${JSON.stringify(flags)}`);
+    H.eq(pb.mods.preservePitch, preservePitch, `pitch mode for ${JSON.stringify(flags)}`);
+    H.eq(pb.scoreOverlay.scoreMultiplier, scoreMultiplier, `score multiplier for ${JSON.stringify(flags)}`);
     H.eq(pb.hits[0].time, raw0, `hits unscaled for ${JSON.stringify(flags)}`);
     H.eq(pb.hits[pb.hits.length - 1].time,
       track.hitObjects[track.hitObjects.length - 1].time, "tail unscaled");
     pb.destroy();
   }
+});
+
+test("headless: corrupt assisted-input modes resolve to autoplay", async () => {
+  const { osu, track, pb: fixturePb } = await bootTrack("Normal");
+  fixturePb.destroy();
+  const game = makeGame({ autoplay: true, relax: true, autopilot: true });
+  game.stage = new PIXI.Container();
+  const pb = new Playback(game, osu, track);
+
+  H.eq(game.autoplay, true, "AT remains enabled");
+  H.eq(game.relax, false, "RL is cleared");
+  H.eq(game.autopilot, false, "AP is cleared");
+  H.eq(pb.autoplay, true);
+  H.eq(pb.relax, false);
+  H.eq(pb.autopilot, false);
+  pb.destroy();
+});
+
+test("headless: rate-adjusted video stays on the song timeline", async () => {
+  const { osu, track, pb: fixturePb } = await bootTrack("Normal");
+  fixturePb.destroy();
+  const game = makeGame({ doubletime: true });
+  game.stage = new PIXI.Container();
+  const pb = new Playback(game, osu, track);
+  let playCalls = 0;
+  pb.audioReady = true;
+  osu.audio = { getPosition: () => 2 };
+  pb.bgVideo = {
+    offset: 500,
+    el: {
+      paused: true,
+      currentTime: 0,
+      playbackRate: 1,
+      play() { playCalls++; return Promise.resolve(); },
+    },
+  };
+
+  pb.syncVideoBG(true);
+  H.eq(pb.bgVideo.offset, 500, "video offset is not divided by playback rate");
+  H.eq(pb.bgVideo.el.currentTime, 1.5, "song position maps directly to video time");
+  H.eq(playCalls, 1, "video starts");
+  pb.destroyVideoBG();
+  pb.destroy();
+});
+
+test("headless: Hard Rock reflects the real map across the X-axis", async () => {
+  const { osu, track, pb: fixturePb } = await bootTrack("Normal");
+  fixturePb.destroy();
+  const sourceIndex = track.hitObjects.findIndex(hit => hit.type === "slider");
+  const source = track.hitObjects[sourceIndex];
+  const originalY = source.y;
+  const originalKeyframeY = source.keyframes[0].y;
+  const originalCurveY = source.curve.curve[0].y;
+  const game = makeGame({ hardrock: true });
+  game.stage = new PIXI.Container();
+  const pb = new Playback(game, osu, track);
+  const reflected = pb.hits[sourceIndex];
+
+  H.eq(reflected.x, source.x, "Hard Rock preserves X");
+  H.eq(reflected.y, 384 - source.y, "Hard Rock reflects hit Y");
+  H.eq(reflected.keyframes[0].y, 384 - source.keyframes[0].y, "keyframe reflected");
+  H.eq(reflected.curve.curve[0].y, 384 - source.curve.curve[0].y, "curve reflected");
+  const t = 0.37;
+  const points = reflected.curve.curve;
+  let lo = 0;
+  let hi = points.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid].t <= t) lo = mid; else hi = mid;
+  }
+  const span = points[hi].t - points[lo].t;
+  const u = span > 1e-12 ? (t - points[lo].t) / span : 0;
+  const expectedY = points[lo].y + (points[hi].y - points[lo].y) * u;
+  H.eq(reflected.curve.pointAt(t).y, expectedY, "curve lookup follows rendered geometry");
+  H.assert(reflected.curve !== source.curve, "gameplay curve is independent");
+  H.eq(source.y, originalY, "decoded hit is not mutated");
+  H.eq(source.keyframes[0].y, originalKeyframeY, "decoded keyframe is not mutated");
+  H.eq(source.curve.curve[0].y, originalCurveY, "decoded curve is not mutated");
+
+  H.eq(pb.CS, Math.min(track.difficulty.CircleSize * 1.3, 10), "HR CS");
+  H.eq(pb.AR, Math.min(track.difficulty.ApproachRate * 1.4, 10), "HR AR");
+  H.eq(pb.OD, Math.min(track.difficulty.OverallDifficulty * 1.4, 10), "HR OD");
+  H.eq(pb.HP, Math.min(track.difficulty.HPDrainRate * 1.4, 10), "HR HP");
+  pb.destroy();
 });
