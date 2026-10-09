@@ -1,7 +1,10 @@
+
+> [!WARNING]
+> WebOsu-2 is NO LONGER MAINTAINED. Please use our successor, [wosu!](https://github.com/Mostlime12195/wosu), if possible!
+
 # WebOsu 2
 
 [![CodeFactor](https://www.codefactor.io/repository/github/webosu-2/webosu-2.github.io/badge)](https://www.codefactor.io/repository/github/webosu-2/webosu-2.github.io)
-
 
 Osu! is a rhythm game in which you click circles on the screen, following the rhythm of the music.
 
